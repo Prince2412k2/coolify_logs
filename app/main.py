@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
-from .database import create_engine_and_sessionmaker, get_db_path
+from .database import create_engine_and_sessionmaker, get_db_path, get_db_url
 from .models import Base
 from .routers import admin as admin_router
 from .routers import api as api_router
@@ -24,8 +24,9 @@ def create_app() -> FastAPI:
 
     logging.basicConfig(level=_log_level().upper())
 
+    db_url = get_db_url()
     db_path = get_db_path()
-    engine, SessionLocal = create_engine_and_sessionmaker(db_path)
+    engine, SessionLocal = create_engine_and_sessionmaker(db_url, db_path)
     app.state.engine = engine
     app.state.SessionLocal = SessionLocal
     app.state.templates = Jinja2Templates(

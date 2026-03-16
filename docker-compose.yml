@@ -1,5 +1,19 @@
-version: "3.8"
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=logify
+      - POSTGRES_PASSWORD=logify
+      - POSTGRES_DB=logify
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   log-gateway:
     build: .
     ports:
@@ -10,6 +24,17 @@ services:
     environment:
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=changeme
+      - LOG_LEVEL=info
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_PER_MINUTE=120
+      - DATABASE_URL=postgres://logify:logify@postgres:5432/logify
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+
 volumes:
   log_gateway_data:
+  postgres_data:
