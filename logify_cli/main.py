@@ -28,12 +28,12 @@ def _config_dir() -> Path:
     if os.name == "nt":
         base = os.environ.get("APPDATA")
         if base:
-            return Path(base) / "logcli"
-        return Path.home() / "AppData" / "Roaming" / "logcli"
+            return Path(base) / "logify"
+        return Path.home() / "AppData" / "Roaming" / "logify"
     base = os.environ.get("XDG_CONFIG_HOME")
     if base:
-        return Path(base) / "logcli"
-    return Path.home() / ".config" / "logcli"
+        return Path(base) / "logify"
+    return Path.home() / ".config" / "logify"
 
 
 def _config_path() -> Path:
@@ -90,7 +90,7 @@ def _resolve_server_and_key(
 
 def _require_key(key: str) -> None:
     if not key:
-        raise typer.BadParameter("Missing API key (use --key or `logcli auth set`)")
+        raise typer.BadParameter("Missing API key (use --key or `logify auth set`)")
 
 
 def _fetch_container_names(server: str, key: str) -> list[str]:
@@ -137,12 +137,19 @@ def _shell_complete_container(
 
 @auth_app.command("set")
 def auth_set(
-    server: str = typer.Option(..., help="Server base URL (http://host:port)"),
-    key: str = typer.Option(..., help="API key (Bearer token)"),
+    server: Optional[str] = typer.Option(
+        None, help="Server base URL (http://host:port)"
+    ),
+    key: Optional[str] = typer.Option(None, help="API key (Bearer token)"),
 ):
+    if not server:
+        server = typer.prompt("Server URL", default="http://localhost:8080")
+    if not key:
+        key = typer.prompt("API key", hide_input=True)
+
     cfg = load_config()
-    cfg["server"] = server.rstrip("/")
-    cfg["key"] = key.strip()
+    cfg["server"] = str(server).rstrip("/")
+    cfg["key"] = str(key).strip()
     save_config(cfg)
     console.print(f"Saved credentials to [bold]{_config_path()}[/bold]")
 

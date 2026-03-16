@@ -114,36 +114,36 @@ pipenv install ./log-gateway
 
 ```bash
 # Configure CLI (stores server URL and API key)
-logcli auth set --server http://localhost:8080 --key <API_KEY>
+logify auth set --server http://localhost:8080 --key <API_KEY>
 
 # View stored configuration
-logcli auth show
+logify auth show
 
 # List available containers
-logcli containers
+logify containers
 
 # Stream logs from a container
-logcli logs my-container --tail 200 --grep "ERROR|WARN"
+logify logs my-container --tail 200 --grep "ERROR|WARN"
 
 # Follow logs from start (equivalent to `docker logs -f`)
-logcli logs my-container --follow
+logify logs my-container --follow
 ```
 
 ### Shell Completion
 
 Install tab completion for your shell:
 ```bash
-logcli --install-completion
+logify --install-completion
 ```
 
 Container name tab-completion:
-- `logcli logs <TAB>` autocompletes container names by calling `/api/containers` using your stored config.
+- `logify logs <TAB>` autocompletes container names by calling `/api/containers` using your stored config.
 
 ### Configuration File
 
 The CLI stores configuration in:
-- Linux/macOS: `~/.config/logcli/config.json`
-- Windows: `%APPDATA%\logcli\config.json`
+- Linux/macOS: `~/.config/logify/config.json`
+- Windows: `%APPDATA%\logify\config.json`
 
 Example config:
 ```json
