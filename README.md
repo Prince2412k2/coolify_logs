@@ -1,11 +1,12 @@
 # Docker Log Gateway
 
 A lightweight log gateway for Docker hosts:
-
 - Admin UI to manage API keys + container access
 - REST + WebSocket API for live logs
 - User web UI for viewing logs with an API key
 - Cross-platform CLI installable via `pipx` or `uv`
+
+Repository: https://github.com/Prince2412k2/coolify_logs
 
 ## Quick Start (Docker)
 
@@ -86,18 +87,18 @@ pip install -e ./log-gateway
 
 #### From source (any of the above work after cloning)
 ```bash
-git clone <repository-url>
-cd log-gateway
+git clone git@github.com:Prince2412k2/coolify_logs.git
+cd coolify_logs/log-gateway
 # Then use any install method above
 ```
 
 #### From Git directly
 ```bash
 # pipx
-pipx install git+<repository-url>.git
+pipx install git@github.com:Prince2412k2/coolify_logs.git
 
 # pip
-pip install git+<repository-url>.git
+pip install git@github.com:Prince2412k2/coolify_logs.git
 ```
 
 #### Using other Python tools

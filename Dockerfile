@@ -12,7 +12,7 @@ COPY app/static/ ./app/static/
 
 # Build a production Tailwind CSS bundle (no CDN runtime).
 RUN curl -fsSL -o /usr/local/bin/tailwindcss \
-    https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.14/tailwindcss-linux-x64 \
+  https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.14/tailwindcss-linux-x64 \
   && chmod +x /usr/local/bin/tailwindcss \
   && /usr/local/bin/tailwindcss -c ./tailwind.config.js -i ./app/static/input.css -o ./app/static/tailwind.css --minify
 
