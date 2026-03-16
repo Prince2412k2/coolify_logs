@@ -34,8 +34,11 @@ class ContainerInfo:
 
 
 def _client():
+    import os
+
+    docker_socket = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
     try:
-        return docker.from_env()
+        return docker.DockerClient(base_url=f"unix://{docker_socket}")
     except DockerException as e:
         raise DockerUnavailable("Docker socket unavailable") from e
 
@@ -58,7 +61,7 @@ def list_containers() -> List[ContainerInfo]:
                 img = ""
             out.append(
                 ContainerInfo(
-                    name=str(getattr(c, "name", "")),
+                    name=str(getattr(c, "name", "")).lstrip("/"),
                     id=str(getattr(c, "id", ""))[:12],
                     status=str(getattr(c, "status", "")),
                     image=str(img),

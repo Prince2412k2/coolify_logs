@@ -27,12 +27,14 @@ services:
       - LOG_LEVEL=info
       - RATE_LIMIT_ENABLED=true
       - RATE_LIMIT_PER_MINUTE=120
-      - DATABASE_URL=postgres://logify:logify@postgres:5432/logify
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - DATABASE_URL=postgresql://logify:logify@postgres:5432/logify
     env_file:
       - .env
     depends_on:
       postgres:
         condition: service_healthy
+    privileged: true
     restart: unless-stopped
 
 volumes:

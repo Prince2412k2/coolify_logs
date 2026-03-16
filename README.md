@@ -19,6 +19,40 @@ Then open:
 - User UI: `http://localhost:8080/`
 - Admin UI: `http://localhost:8080/admin` (defaults: `admin` / `changeme`)
 
+## WebSocket & Reverse Proxy
+
+When deploying behind a reverse proxy (Coolify, Nginx, Traefik), ensure WebSocket support is enabled:
+
+### Coolify
+In your Coolify proxy settings, ensure WebSocket routes are allowed:
+- Set `Proxy WebSocket Support` to enabled (if available)
+- Or add custom headers:
+  ```
+  Upgrade: $connection_upgrade
+  Connection: upgrade
+  ```
+
+#### Docker Socket Access
+The container needs access to the Docker socket. In Coolify:
+- Ensure `/var/run/docker.sock` is mounted to the container
+- If using a different socket path, set `DOCKER_SOCKET` env var
+- The container needs appropriate permissions to access the socket
+
+### Nginx
+Add to your nginx config:
+```nginx
+location / {
+    proxy_pass http://localhost:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
+
+### Traefik
+WebSocket is supported by default in Traefik v2+.
+
 ## Environment Variables
 
 All have defaults:
