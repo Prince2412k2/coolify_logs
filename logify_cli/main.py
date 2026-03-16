@@ -135,21 +135,46 @@ def _shell_complete_container(
     return [_CompletionItem(n) for n in out]
 
 
+def _validate_key(server: str, key: str) -> bool:
+    """Validate API key by making a test request."""
+    url = _join_url(server, "/api/containers")
+    headers = {"Authorization": f"Bearer {key}"}
+    try:
+        with httpx.Client(timeout=5) as client:
+            r = client.get(url, headers=headers)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 @auth_app.command("set")
 def auth_set(
     server: Optional[str] = typer.Option(
         None, help="Server base URL (http://host:port)"
     ),
     key: Optional[str] = typer.Option(None, help="API key (Bearer token)"),
+    validate: bool = typer.Option(True, help="Validate API key before saving"),
 ):
     if not server:
         server = typer.prompt("Server URL", default="http://localhost:8080")
     if not key:
         key = typer.prompt("API key", hide_input=True)
 
+    server = str(server).rstrip("/")
+    key = str(key).strip()
+
+    if validate:
+        console.print("Validating API key...")
+        if _validate_key(server, key):
+            console.print("[green]API key is valid![/green]")
+        else:
+            console.print("[red]Invalid API key - could not authenticate[/red]")
+            if not typer.confirm("Save anyway?"):
+                raise typer.Exit()
+
     cfg = load_config()
-    cfg["server"] = str(server).rstrip("/")
-    cfg["key"] = str(key).strip()
+    cfg["server"] = server
+    cfg["key"] = key
     save_config(cfg)
     console.print(f"Saved credentials to [bold]{_config_path()}[/bold]")
 

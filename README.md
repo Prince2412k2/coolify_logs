@@ -69,8 +69,11 @@ The CLI can be installed in several ways:
 # pipx
 pipx install ./log-gateway
 
-# uv
+# uv (from local directory)
 uv tool install ./log-gateway
+
+# uv (from GitHub)
+uv tool install git+https://github.com/Prince2412k2/coolify_logs.git
 ```
 
 #### Traditional pip install
@@ -94,11 +97,11 @@ cd coolify_logs/log-gateway
 
 #### From Git directly
 ```bash
-# pipx
-pipx install git@github.com:Prince2412k2/coolify_logs.git
+# pipx (use HTTPS)
+pipx install git+https://github.com/Prince2412k2/coolify_logs.git
 
-# pip
-pip install git@github.com:Prince2412k2/coolify_logs.git
+# pip (use HTTPS)
+pip install git+https://github.com/Prince2412k2/coolify_logs.git
 ```
 
 #### Using other Python tools
