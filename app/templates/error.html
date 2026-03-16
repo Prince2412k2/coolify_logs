@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Error{% endblock %}
+{% block content %}
+  <div class="rounded-xl border border-rose-900/50 bg-rose-950/40 p-6">
+    <div class="text-sm font-semibold">Error {{ status }}</div>
+    <div class="mt-2 text-sm text-rose-100">{{ message }}</div>
+    <div class="mt-4 text-xs text-rose-200/70">No stack traces are exposed to clients.</div>
+  </div>
+{% endblock %}

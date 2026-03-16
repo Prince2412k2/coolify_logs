@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Log Viewer{% endblock %}
+{% block content %}
+  <div class="grid gap-6">
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div class="text-sm text-zinc-300">Paste your API key to list allowed containers and view live logs.</div>
+      <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+        <label class="block flex-1">
+          <div class="text-xs font-medium text-zinc-400">API key</div>
+          <input id="apiKey" type="password" autocomplete="off"
+                 class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600"
+                 placeholder="Bearer token" />
+        </label>
+        <button id="loadBtn" class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">
+          Load containers
+        </button>
+      </div>
+      <div id="status" class="mt-3 text-sm text-zinc-400"></div>
+    </div>
+
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm font-semibold">Allowed running containers</div>
+          <div class="text-xs text-zinc-400">Click a container to open the viewer.</div>
+        </div>
+      </div>
+      <div id="containerList" class="mt-4 grid gap-2"></div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const listEl = document.getElementById('containerList');
+    const keyEl = document.getElementById('apiKey');
+    const btn = document.getElementById('loadBtn');
+
+    function setStatus(msg) {
+      statusEl.textContent = msg || '';
+    }
+
+    function containerRow(c) {
+      const a = document.createElement('a');
+      a.href = `/logs/${encodeURIComponent(c.name)}`;
+      a.className = 'group flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3 hover:border-zinc-700';
+      a.innerHTML = `
+        <div class="min-w-0">
+          <div class="truncate font-mono text-sm text-zinc-100">${c.name}</div>
+          <div class="mt-1 truncate text-xs text-zinc-500">${c.image || ''} • ${c.status || ''} • ${c.id || ''}</div>
+        </div>
+        <div class="text-xs text-zinc-500 group-hover:text-zinc-300">View logs →</div>
+      `;
+      return a;
+    }
+
+    async function loadContainers() {
+      const key = keyEl.value.trim();
+      if (!key) {
+        setStatus('API key required.');
+        return;
+      }
+      setStatus('Loading...');
+      listEl.innerHTML = '';
+      try {
+        const r = await fetch('/api/containers', {
+          headers: { 'Authorization': `Bearer ${key}` }
+        });
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          setStatus(data.error || `Request failed (${r.status})`);
+          return;
+        }
+        const data = await r.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          setStatus('(no allowed running containers)');
+          return;
+        }
+        setStatus(`${data.length} container(s)`);
+        for (const c of data) listEl.appendChild(containerRow(c));
+        localStorage.setItem('log_gateway_api_key', key);
+      } catch (e) {
+        setStatus('Failed to reach server.');
+      }
+    }
+
+    // Load last key (optional)
+    const prev = localStorage.getItem('log_gateway_api_key');
+    if (prev) keyEl.value = prev;
+
+    btn.addEventListener('click', loadContainers);
+  </script>
+{% endblock %}

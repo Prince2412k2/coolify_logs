@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Admin Login{% endblock %}
+{% block content %}
+  <div class="mx-auto max-w-md rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
+    <div class="text-sm font-semibold">Admin login</div>
+    <div class="mt-1 text-xs text-zinc-400">Session expires in ~8 hours.</div>
+    {% if error %}
+      <div class="mt-4 rounded-md border border-rose-900/50 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/admin/login" class="mt-5 grid gap-4">
+      <label>
+        <div class="text-xs font-medium text-zinc-400">Username</div>
+        <input name="username" class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" />
+      </label>
+      <label>
+        <div class="text-xs font-medium text-zinc-400">Password</div>
+        <input type="password" name="password" class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" />
+      </label>
+      <button class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">Sign in</button>
+    </form>
+  </div>
+{% endblock %}

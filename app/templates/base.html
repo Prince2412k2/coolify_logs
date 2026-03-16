@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Coolify Logs{% endblock %}</title>
+    <link rel="stylesheet" href="/static/tailwind.css" />
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  </head>
+  <body class="min-h-screen bg-zinc-950 text-zinc-100">
+    <div class="mx-auto max-w-6xl px-4 py-6">
+      <div class="flex items-center justify-between gap-4">
+        <a href="/" class="text-lg font-semibold tracking-tight">Coolify logs</a>
+      </div>
+      <div class="mt-6">{% block content %}{% endblock %}</div>
+    </div>
+  </body>
+</html>

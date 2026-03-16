@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  log-gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - log_gateway_data:/data
+    environment:
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=changeme
+    restart: unless-stopped
+volumes:
+  log_gateway_data:

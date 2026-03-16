@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Logs - {{ container_name }}{% endblock %}
+{% block content %}
+     <div class="grid gap-4">
+     <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+       <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+         <div>
+           <div class="font-mono text-sm text-zinc-100">{{ container_name }}</div>
+           <div class="mt-1 flex items-center gap-2">
+             <span id="wsDot" class="h-2 w-2 rounded-full bg-zinc-700"></span>
+             <span id="wsState" class="text-xs text-zinc-400">stopped</span>
+           </div>
+         </div>
+
+         <div class="flex flex-col gap-3 md:flex-row md:items-end">
+           <label class="block">
+             <div class="text-xs font-medium text-zinc-400">Tail</div>
+             <input id="tail" type="number" min="0" value="100"
+                    class="mt-1 w-28 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm" />
+           </label>
+           <button id="liveBtn" class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">Live</button>
+           <button id="clearBtn" class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-700">Clear</button>
+         </div>
+       </div>
+     </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-zinc-800 bg-zinc-950 p-0">
+      <div id="logBox" class="max-h-[70vh] overflow-auto p-4 text-xs leading-5 text-zinc-100 font-mono"></div>
+    </div>
+  </div>
+
+    <script>
+     const wsState = document.getElementById('wsState');
+     const wsDot = document.getElementById('wsDot');
+     const logBox = document.getElementById('logBox');
+     const liveBtn = document.getElementById('liveBtn');
+     const clearBtn = document.getElementById('clearBtn');
+     const tailEl = document.getElementById('tail');
+
+     let ws = null;
+     let closedByUser = false;
+     let liveMode = false;
+
+     function setState(s, dotClass) {
+       wsState.textContent = s;
+       wsDot.className = 'h-2 w-2 rounded-full ' + (dotClass || 'bg-zinc-700');
+     }
+
+     function setLiveButton() {
+       if (liveMode) {
+         liveBtn.textContent = 'Stop';
+         liveBtn.className = 'rounded-md bg-rose-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-rose-400';
+         tailEl.disabled = true;
+         tailEl.classList.add('opacity-60');
+       } else {
+         liveBtn.textContent = 'Live';
+         liveBtn.className = 'rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400';
+         tailEl.disabled = false;
+         tailEl.classList.remove('opacity-60');
+       }
+     }
+
+     function isNearBottom() {
+       return (logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight) < 60;
+     }
+
+     function classify(line) {
+       const l = (line || '').toLowerCase();
+       if (l.includes('traceback') || l.includes('exception') || /\b(error|fatal|critical)\b/.test(l)) return 'err';
+       if (/\bwarn(ing)?\b/.test(l)) return 'warn';
+       if (/\b(debug|trace)\b/.test(l)) return 'debug';
+       if (/\binfo\b/.test(l) || /\[info\]/.test(l)) return 'info';
+       return 'default';
+     }
+
+     function appendLine(line) {
+       const stayPinned = isNearBottom();
+       const row = document.createElement('div');
+       row.className = 'flex gap-3 py-0.5 border-b border-zinc-900/60 rounded-md px-2';
+
+       const ts = document.createElement('span');
+       ts.className = 'shrink-0 text-zinc-500 select-none';
+       ts.textContent = new Date().toISOString().slice(11, 19);
+
+       const msg = document.createElement('span');
+       msg.className = 'whitespace-pre-wrap break-words';
+       msg.textContent = line;
+
+       const kind = classify(line);
+       if (kind === 'err') {
+         msg.classList.add('text-rose-200');
+         row.classList.add('bg-rose-950/20', 'border', 'border-rose-900/30');
+       }
+       if (kind === 'warn') {
+         msg.classList.add('text-amber-200');
+         row.classList.add('bg-amber-950/20', 'border', 'border-amber-900/30');
+       }
+       if (kind === 'info') {
+         msg.classList.add('text-sky-200');
+       }
+       if (kind === 'debug') {
+         msg.classList.add('text-zinc-300');
+         ts.classList.add('text-zinc-600');
+       }
+
+       row.appendChild(ts);
+       row.appendChild(msg);
+       logBox.appendChild(row);
+
+       // Keep memory bounded.
+       while (logBox.childNodes.length > 3000) {
+         logBox.removeChild(logBox.firstChild);
+       }
+
+       if (stayPinned) logBox.scrollTop = logBox.scrollHeight;
+     }
+
+     function wsUrl() {
+       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+       return proto + '//' + location.host + '{{ ws_url }}' + `?tail=${encodeURIComponent(tailEl.value || 100)}`;
+     }
+
+     function getKey() {
+       const v = localStorage.getItem('log_gateway_api_key') || '';
+       return (v || '').trim();
+     }
+
+     function connect() {
+       closedByUser = false;
+       if (ws) { try { ws.close(); } catch (e) {} }
+       setState('connecting...', 'bg-amber-400');
+       ws = new WebSocket(wsUrl());
+
+       ws.onopen = () => {
+         setState('live', 'bg-emerald-400');
+         const key = getKey();
+         if (!key) {
+           appendLine('[client] missing API key');
+           closedByUser = true;
+           liveMode = false;
+           setLiveButton();
+           setState('stopped', 'bg-zinc-700');
+           ws.close();
+           return;
+         }
+         ws.send(JSON.stringify({ type: 'auth', token: key, tail: parseInt(tailEl.value || '100', 10) }));
+       };
+
+       ws.onmessage = (ev) => {
+         let data = null;
+         try { data = JSON.parse(ev.data); } catch (e) { return; }
+         if (data.type === 'error') {
+           appendLine('[server] ' + (data.message || 'error'));
+           liveMode = false;
+           setLiveButton();
+           setState('stopped', 'bg-zinc-700');
+           try { ws.close(); } catch (e) {}
+           return;
+         }
+         if (data.type === 'log' && typeof data.line === 'string') {
+           appendLine(data.line);
+         }
+       };
+
+       ws.onclose = () => {
+         if (!liveMode || closedByUser) {
+           setState('stopped', 'bg-zinc-700');
+           return;
+         }
+         setState('reconnecting...', 'bg-amber-400');
+         setTimeout(() => { if (liveMode && !closedByUser) connect(); }, 1500);
+       };
+
+       ws.onerror = () => {
+         setState('error', 'bg-rose-400');
+       };
+     }
+
+     function stop() {
+       closedByUser = true;
+       liveMode = false;
+       setLiveButton();
+       setState('stopped', 'bg-zinc-700');
+       if (ws) {
+         try { ws.close(); } catch (e) {}
+       }
+     }
+
+     function startLive() {
+       liveMode = true;
+       setLiveButton();
+       connect();
+     }
+
+     setState('stopped', 'bg-zinc-700');
+     setLiveButton();
+
+     liveBtn.addEventListener('click', () => {
+       if (liveMode) stop();
+       else startLive();
+     });
+     clearBtn.addEventListener('click', () => { logBox.innerHTML = ''; });
+
+     // Auto-start live if key is already saved.
+     if (localStorage.getItem('log_gateway_api_key')) setTimeout(startLive, 250);
+   </script>
+{% endblock %}

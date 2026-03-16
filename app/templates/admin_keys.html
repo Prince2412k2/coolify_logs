@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Admin API Keys{% endblock %}
+{% block content %}
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-sm font-semibold">API keys</div>
+      <div class="text-xs text-zinc-400">Create keys and assign container access.</div>
+    </div>
+    <a href="/admin" class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700">Back</a>
+  </div>
+
+  <div class="mt-6 grid gap-6">
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div class="text-sm font-semibold">Create API key</div>
+      <form class="mt-4 grid gap-4" hx-post="/admin/keys/create" hx-target="#keysPartial" hx-swap="outerHTML">
+        <label>
+          <div class="text-xs font-medium text-zinc-400">Name</div>
+          <input name="name" class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" placeholder="Team / user" />
+        </label>
+        <div>
+          <div class="text-xs font-medium text-zinc-400">Allowed containers</div>
+          <div class="mt-2 grid gap-2 md:grid-cols-2">
+            {% for n in running_names %}
+              <label class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm">
+                <input type="checkbox" name="allowed_containers" value="{{ n }}" class="accent-emerald-500" />
+                <span class="font-mono text-xs">{{ n }}</span>
+              </label>
+            {% endfor %}
+            {% if running_names|length == 0 %}
+              <div class="text-sm text-zinc-400">(no running containers found)</div>
+            {% endif %}
+          </div>
+        </div>
+        <button class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">Create</button>
+      </form>
+    </div>
+
+    {% include "admin_keys_partial.html" %}
+  </div>
+{% endblock %}

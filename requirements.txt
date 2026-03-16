@@ -1,0 +1,11 @@
+fastapi==0.115.8
+uvicorn[standard]==0.30.6
+docker==7.1.0
+SQLAlchemy==2.0.36
+Jinja2==3.1.4
+itsdangerous==2.2.0
+python-multipart==0.0.12
+
+# CLI deps (also used for local testing)
+httpx==0.27.2
+websockets==13.1
