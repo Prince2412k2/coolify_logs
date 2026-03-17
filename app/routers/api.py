@@ -104,26 +104,11 @@ def _ws_bearer_from_headers(ws: WebSocket) -> Optional[str]:
     return token or None
 
 
-@router.get("/logs/{container_name}")
-async def logs_debug(request: Request, container_name: str):
-    """Debug route to check if the proxy is passing WebSocket headers."""
-    return {
-        "error": "This is a WebSocket endpoint. You connected via HTTP.",
-        "container_requested": container_name,
-        "headers_received": dict(request.headers),
-        "suggestion": "Check if your proxy (Caddy/Traefik) is stripping the 'Upgrade' header."
-    }
+
 
 
 @router.websocket("/logs/{container_name}")
-async def logs_ws(websocket: WebSocket, container_name: str):
-    # Retrieve tail from query params manually
-    tail_str = websocket.query_params.get("tail", "100")
-    try:
-        tail = int(tail_str)
-    except ValueError:
-        tail = 100
-        
+async def logs_ws(websocket: WebSocket, container_name: str, tail: int = 100):
     await websocket.accept()
 
     if rate_limit.enabled():
