@@ -2,42 +2,117 @@
   <div class="text-sm font-semibold">Existing keys</div>
   <div class="mt-4 grid gap-4">
     {% if keys|length == 0 %}
-      <div class="text-sm text-zinc-400">(none)</div>
+    <div class="text-sm text-zinc-400">(none)</div>
     {% endif %}
     {% for k in keys %}
-      <div class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
-        <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div class="min-w-0">
-              <div class="text-sm font-semibold">{{ k.name }}</div>
-              <div class="mt-2 flex items-center gap-2">
-                <div class="break-all font-mono text-xs text-zinc-200">{{ k.key }}</div>
-                <button type="button" onclick="navigator.clipboard.writeText('{{ k.key }}').then(() => this.textContent = 'Copied!').catch(() => this.textContent = 'Error')" class="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200">Copy</button>
-              </div>
-              <div class="mt-2 text-xs text-zinc-500">Created {{ k.created_at }}</div>
-            </div>
-            <form hx-post="/admin/keys/{{ k.key }}/delete" hx-target="#keysPartial" hx-swap="outerHTML">
-              <button class="rounded-md border border-rose-900/50 bg-rose-950/40 px-3 py-2 text-xs text-rose-200 hover:bg-rose-950/70">Delete</button>
-            </form>
-        </div>
-
-        <form class="mt-4" hx-post="/admin/keys/{{ k.key }}/update" hx-target="#keysPartial" hx-swap="outerHTML">
-          <div class="text-xs font-medium text-zinc-400">Allowed containers</div>
-          <div class="mt-2 grid gap-2 md:grid-cols-2">
-            {% set allowed_list = k.allowed_list() %}
-            {% for n in running_names %}
-              {% set checked = n in allowed_list %}
-              <label class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm">
-                <input type="checkbox" name="allowed_containers" value="{{ n }}" class="accent-emerald-500" {% if checked %}checked{% endif %} />
-                <span class="font-mono text-xs">{{ n }}</span>
-              </label>
-            {% endfor %}
-            {% if running_names|length == 0 %}
-              <div class="text-sm text-zinc-400">(no running containers found)</div>
-            {% endif %}
+    <div class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
+      <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold">{{ k.name }}</div>
+          <div class="mt-2 flex items-center gap-2">
+            <div class="break-all font-mono text-xs text-zinc-200">{{ k.key }}</div>
+            <button type="button"
+              onclick="navigator.clipboard.writeText('{{ k.key }}').then(() => this.textContent = 'Copied!').catch(() => this.textContent = 'Error')"
+              class="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200">Copy</button>
           </div>
-          <button class="mt-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 hover:border-zinc-700">Save</button>
+          <div class="mt-2 text-xs text-zinc-500">Created {{ k.created_at }}</div>
+        </div>
+        <form hx-post="/admin/keys/{{ k.key }}/delete" hx-target="#keysPartial" hx-swap="outerHTML">
+          <button
+            class="rounded-md border border-rose-900/50 bg-rose-950/40 px-3 py-2 text-xs text-rose-200 hover:bg-rose-950/70">Delete</button>
         </form>
       </div>
+
+      <form class="mt-4" hx-post="/admin/keys/{{ k.key }}/update" hx-target="#keysPartial" hx-swap="outerHTML">
+        <div class="text-xs font-medium text-zinc-400">Allowed containers</div>
+        <div class="mt-2">
+          {% set allowed_list = k.allowed_list() %}
+
+          {% for project in projects %}
+          <div class="project-group mb-8 last:mb-0">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <div class="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
+                <div class="text-[10px] font-black uppercase tracking-widest text-zinc-400">{{ project.project_name }}
+                </div>
+              </div>
+              <label
+                class="flex items-center gap-1.5 cursor-pointer hover:bg-zinc-800/50 px-1.5 py-0.5 rounded transition">
+                <input type="checkbox" class="accent-emerald-600 h-3 w-3 rounded border-zinc-700 bg-zinc-900"
+                  onchange="this.closest('.project-group').querySelectorAll('input[name=allowed_containers]').forEach(cb => cb.checked = this.checked)">
+                <span class="text-[9px] font-bold uppercase text-zinc-500 tracking-tight">Select Project</span>
+              </label>
+            </div>
+
+            <div class="ml-1 space-y-6 border-l border-zinc-800/50 pl-6">
+              {% for stage in project.stages %}
+              <div class="stage-group">
+                <div class="flex items-center justify-between mb-3 -ml-[calc(24px+2px)]">
+                  <div class="flex items-center gap-2">
+                    <div class="h-[1px] w-4 bg-zinc-800"></div>
+                    <div
+                      class="px-2 py-0.5 rounded bg-zinc-800/40 border border-zinc-800 text-[9px] font-black text-zinc-500 uppercase tracking-wider">
+                      {{ stage.stage_name }}</div>
+                  </div>
+                  <label
+                    class="flex items-center gap-1.5 cursor-pointer hover:bg-zinc-800/50 px-1.5 py-0.5 rounded transition">
+                    <input type="checkbox" class="accent-emerald-600 h-3 w-3 rounded border-zinc-700 bg-zinc-900"
+                      onchange="this.closest('.stage-group').querySelectorAll('input[name=allowed_containers]').forEach(cb => cb.checked = this.checked)">
+                    <span class="text-[8px] font-bold uppercase text-zinc-500 tracking-tight">Select Stage</span>
+                  </label>
+                </div>
+
+                <div class="grid gap-2 md:grid-cols-2">
+                  {% for s in stage.services %}
+                  {% set checked = s.container_name in allowed_list %}
+                  <label
+                    class="flex items-center gap-3 rounded-lg border border-zinc-800/60 bg-zinc-950/40 px-4 py-3 text-sm transition-all hover:border-zinc-700 hover:bg-zinc-900/40 cursor-pointer group">
+                    <input type="checkbox" name="allowed_containers" value="{{ s.container_name }}"
+                      class="accent-emerald-500 h-4 w-4 rounded border-zinc-700 bg-zinc-900" {% if checked %}checked{%
+                      endif %} />
+                    <div class="min-w-0">
+                      <div
+                        class="truncate font-mono text-xs text-zinc-200 group-hover:text-emerald-400 transition-colors">
+                        {{ s.name }}</div>
+                      <div class="truncate text-[9px] font-bold uppercase text-zinc-600 mt-1 flex items-center gap-2">
+                        <span class="px-1 py-0.5 bg-zinc-900 border border-zinc-800 rounded-sm">{{ s.type }}</span>
+                        <span>{{ s.container_id }}</span>
+                      </div>
+                    </div>
+                  </label>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+
+          {% if others|length > 0 %}
+          <div class="mb-4">
+            <div class="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Other Containers</div>
+            <div class="grid gap-2 md:grid-cols-2">
+              {% for c in others %}
+              {% set checked = c.name in allowed_list %}
+              <label
+                class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm transition-colors hover:border-zinc-700 cursor-pointer">
+                <input type="checkbox" name="allowed_containers" value="{{ c.name }}" class="accent-emerald-500" {% if
+                  checked %}checked{% endif %} />
+                <span class="truncate font-mono text-xs">{{ c.name }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          {% if projects|length == 0 and others|length == 0 %}
+          <div class="text-xs text-zinc-500 italic">No running containers found.</div>
+          {% endif %}
+        </div>
+        <button
+          class="mt-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 hover:border-zinc-700">Save</button>
+      </form>
+    </div>
     {% endfor %}
   </div>
 </div>

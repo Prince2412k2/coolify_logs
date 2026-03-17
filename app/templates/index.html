@@ -1,95 +1,142 @@
 {% extends "base.html" %}
 {% block title %}Log Viewer{% endblock %}
 {% block content %}
-  <div class="grid gap-6">
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-      <div class="text-sm text-zinc-300">Paste your API key to list allowed containers and view live logs.</div>
-      <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
-        <label class="block flex-1">
-          <div class="text-xs font-medium text-zinc-400">API key</div>
-          <input id="apiKey" type="password" autocomplete="off"
-                 class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600"
-                 placeholder="Bearer token" />
-        </label>
-        <button id="loadBtn" class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">
-          Load containers
-        </button>
-      </div>
-      <div id="status" class="mt-3 text-sm text-zinc-400"></div>
+<div class="grid gap-6">
+  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div class="text-sm text-zinc-300">Paste your API key to list allowed containers and view live logs.</div>
+    <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+      <label class="block flex-1">
+        <div class="text-xs font-medium text-zinc-400">API key</div>
+        <input id="apiKey" type="password" autocomplete="off"
+          class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600"
+          placeholder="Bearer token" />
+      </label>
+      <button id="loadBtn"
+        class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">
+        Load containers
+      </button>
     </div>
-
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-      <div class="flex items-center justify-between">
-        <div>
-          <div class="text-sm font-semibold">Allowed running containers</div>
-          <div class="text-xs text-zinc-400">Click a container to open the viewer.</div>
-        </div>
-      </div>
-      <div id="containerList" class="mt-4 grid gap-2"></div>
-    </div>
+    <div id="status" class="mt-3 text-sm text-zinc-400"></div>
   </div>
 
-  <script>
-    const statusEl = document.getElementById('status');
-    const listEl = document.getElementById('containerList');
-    const keyEl = document.getElementById('apiKey');
-    const btn = document.getElementById('loadBtn');
+  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-sm font-semibold">Allowed running containers</div>
+        <div class="text-xs text-zinc-400">Click a container to open the viewer.</div>
+      </div>
+    </div>
+    <div id="containerList" class="mt-4 grid gap-2"></div>
+  </div>
+</div>
 
-    function setStatus(msg) {
-      statusEl.textContent = msg || '';
-    }
+<script>
+  const statusEl = document.getElementById('status');
+  const listEl = document.getElementById('containerList');
+  const keyEl = document.getElementById('apiKey');
+  const btn = document.getElementById('loadBtn');
 
-    function containerRow(c) {
-      const a = document.createElement('a');
-      a.href = `/logs/${encodeURIComponent(c.name)}`;
-      a.className = 'group flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3 hover:border-zinc-700';
-      const displayName = (c.project && c.environment) 
-        ? `[${c.project}/${c.environment}${c.service ? '/' + c.service : (c.app ? '/' + c.app : '')}]`
-        : c.name;
-      a.innerHTML = `
-        <div class="min-w-0">
-          <div class="truncate font-mono text-sm text-zinc-100">${displayName}</div>
-          <div class="mt-1 truncate text-xs text-zinc-500">${c.image || ''} • ${c.status || ''} • ${c.id || ''}</div>
-        </div>
-        <div class="text-xs text-zinc-500 group-hover:text-zinc-300">View logs →</div>
+  function setStatus(msg) {
+    statusEl.textContent = msg || '';
+  }
+
+  function projectSection(p) {
+    const section = document.createElement('div');
+    section.className = 'mb-12 last:mb-0';
+
+    const head = document.createElement('div');
+    head.className = 'flex items-center gap-3 mb-6';
+    head.innerHTML = `
+        <div class="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.7)]"></div>
+        <div class="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-100">${p.project_name}</div>
       `;
-      return a;
+    section.appendChild(head);
+
+    const ladder = document.createElement('div');
+    ladder.className = 'ml-1 space-y-10 border-l border-zinc-800/80 pl-8 relative';
+
+    for (const stage of p.stages) {
+      const stageDiv = document.createElement('div');
+      stageDiv.className = 'relative';
+      stageDiv.innerHTML = `
+          <!-- Stage Stem -->
+          <div class="absolute -left-[32px] top-3 h-[1px] w-8 bg-zinc-800/80"></div>
+          <div class="absolute -left-[32px] top-3 h-2 w-2 -translate-y-[3.5px] rounded-full bg-zinc-800"></div>
+
+          <div class="mb-4">
+            <span class="px-2 py-0.5 rounded-sm bg-zinc-900 border border-zinc-800 text-[10px] font-black text-zinc-500 uppercase tracking-widest">${stage.stage_name}</span>
+          </div>
+        `;
+
+      const grid = document.createElement('div');
+      grid.className = 'grid gap-3';
+
+      for (const s of stage.services) {
+        const a = document.createElement('a');
+        a.href = `/logs/${encodeURIComponent(s.container_name)}`;
+        a.className = 'group flex items-center justify-between rounded-xl border border-zinc-800/40 bg-zinc-950/20 px-5 py-4 transition-all hover:bg-zinc-900/10 hover:border-zinc-700/50';
+
+        a.innerHTML = `
+            <div class="min-w-0">
+              <div class="truncate font-mono text-sm font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors">${s.name}</div>
+              <div class="mt-2 flex items-center gap-3">
+                <span class="inline-flex items-center rounded-sm bg-zinc-900/80 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-zinc-500 border border-zinc-800/50 leading-none">${s.type}</span>
+                <span class="text-[10px] font-medium text-zinc-600 font-mono">${s.container_id}</span>
+              </div>
+            </div>
+            <div class="text-[10px] font-bold text-zinc-600 uppercase tracking-tight group-hover:text-zinc-300 transition-colors">View logs →</div>
+          `;
+        grid.appendChild(a);
+      }
+
+      stageDiv.appendChild(grid);
+      ladder.appendChild(stageDiv);
     }
 
-    async function loadContainers() {
-      const key = keyEl.value.trim();
-      if (!key) {
-        setStatus('API key required.');
+    section.appendChild(ladder);
+    return section;
+  }
+
+  async function loadContainers() {
+    const key = keyEl.value.trim();
+    if (!key) {
+      setStatus('API key required.');
+      return;
+    }
+    setStatus('Loading...');
+    listEl.innerHTML = '';
+    try {
+      const r = await fetch('/api/projects', {
+        headers: { 'Authorization': `Bearer ${key}` }
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setStatus(data.error || `Request failed (${r.status})`);
         return;
       }
-      setStatus('Loading...');
-      listEl.innerHTML = '';
-      try {
-        const r = await fetch('/api/containers', {
-          headers: { 'Authorization': `Bearer ${key}` }
-        });
-        if (!r.ok) {
-          const data = await r.json().catch(() => ({}));
-          setStatus(data.error || `Request failed (${r.status})`);
-          return;
-        }
-        const data = await r.json();
-        if (!Array.isArray(data) || data.length === 0) {
-          setStatus('(no allowed running containers)');
-          return;
-        }
-        setStatus(`${data.length} container(s)`);
-        for (const c of data) listEl.appendChild(containerRow(c));
-        localStorage.setItem('log_gateway_api_key', key);
-      } catch (e) {
-        setStatus('Failed to reach server.');
+      const data = await r.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        setStatus('(no allowed running containers/projects)');
+        return;
       }
+
+      let total = 0;
+      for (const p of data) {
+        for (const s of p.stages) total += s.services.length;
+        listEl.appendChild(projectSection(p));
+      }
+
+      setStatus(`${data.length} project(s), ${total} container(s)`);
+      localStorage.setItem('log_gateway_api_key', key);
+    } catch (e) {
+      setStatus('Failed to reach server.');
     }
+  }
 
-    // Load last key (optional)
-    const prev = localStorage.getItem('log_gateway_api_key');
-    if (prev) keyEl.value = prev;
+  // Load last key (optional)
+  const prev = localStorage.getItem('log_gateway_api_key');
+  if (prev) keyEl.value = prev;
 
-    btn.addEventListener('click', loadContainers);
-  </script>
+  btn.addEventListener('click', loadContainers);
+</script>
 {% endblock %}

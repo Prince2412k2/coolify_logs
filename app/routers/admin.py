@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from .. import coolify_db
 from .. import docker_client
 from .. import rate_limit
 from ..auth import (
@@ -72,19 +73,42 @@ def logout_post(request: Request):
 @router.get("", response_class=HTMLResponse)
 def admin_index(request: Request, admin_user: str = Depends(require_admin)):
     try:
-        containers = [c.as_dict() for c in docker_client.list_containers()]
-    except docker_client.DockerUnavailable:
-        containers = []
-        docker_error = "Docker socket unavailable"
-    else:
+        # Get all projects
+        projects = coolify_db.coolify_db.get_detailed_projects()
+        
+        # Also get all containers to find ones not in projects
+        all_containers = [c.as_dict() for c in docker_client.list_containers()]
+        
+        # Track which containers are in projects (by name and ID)
+        in_projects = set()
+        for p in projects:
+            for stage in p.get("stages", []):
+                for s in stage.get("services", []):
+                    if s.get("container_name") and s.get("container_name") != "Not Found":
+                        in_projects.add(s.get("container_name"))
+                    if s.get("container_id") and s.get("container_id") != "Not Found":
+                        in_projects.add(s.get("container_id"))
+        
+        # Find "Other" containers
+        others = [c for c in all_containers if c.get("name") not in in_projects and c.get("id")[:12] not in in_projects]
+        
         docker_error = None
+    except docker_client.DockerUnavailable:
+        projects = []
+        others = []
+        docker_error = "Docker socket unavailable"
+    except Exception as e:
+        projects = []
+        others = []
+        docker_error = f"Error: {str(e)}"
 
     return _templates(request).TemplateResponse(
         "admin_index.html",
         {
             "request": request,
             "admin_user": admin_user,
-            "containers": containers,
+            "projects": projects,
+            "others": others,
             "docker_error": docker_error,
         },
     )
@@ -93,16 +117,26 @@ def admin_index(request: Request, admin_user: str = Depends(require_admin)):
 def _render_keys_partial(request: Request, db: Session):
     keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
     try:
-        running = [c.as_dict() for c in docker_client.list_containers()]
+        projects = coolify_db.coolify_db.get_detailed_projects()
+        all_containers = [c.as_dict() for c in docker_client.list_containers()]
+        
+        in_projects = set()
+        for p in projects:
+            for s in p.get("services", []):
+                in_projects.add(s.get("container_name"))
+        
+        others = [c for c in all_containers if c.get("name") not in in_projects]
     except docker_client.DockerUnavailable:
-        running = []
-    running_names = [c.get("name") for c in running if c.get("name")]
+        projects = []
+        others = []
+    
     return _templates(request).TemplateResponse(
         "admin_keys_partial.html",
         {
             "request": request,
             "keys": keys,
-            "running_names": running_names,
+            "projects": projects,
+            "others": others,
         },
     )
 
@@ -116,16 +150,26 @@ def keys_get(
     _ = admin_user
     keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
     try:
-        running = [c.as_dict() for c in docker_client.list_containers()]
+        projects = coolify_db.coolify_db.get_detailed_projects()
+        all_containers = [c.as_dict() for c in docker_client.list_containers()]
+        
+        in_projects = set()
+        for p in projects:
+            for s in p.get("services", []):
+                in_projects.add(s.get("container_name"))
+        
+        others = [c for c in all_containers if c.get("name") not in in_projects]
     except docker_client.DockerUnavailable:
-        running = []
-    running_names = [c.get("name") for c in running if c.get("name")]
+        projects = []
+        others = []
+
     return _templates(request).TemplateResponse(
         "admin_keys.html",
         {
             "request": request,
             "keys": keys,
-            "running_names": running_names,
+            "projects": projects,
+            "others": others,
         },
     )
 

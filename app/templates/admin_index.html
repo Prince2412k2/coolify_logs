@@ -1,39 +1,171 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard{% endblock %}
+
 {% block content %}
-  <div class="flex flex-col gap-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <div class="text-sm font-semibold">Admin dashboard</div>
-        <div class="text-xs text-zinc-400">Signed in as {{ admin_user }}</div>
-      </div>
-      <div class="flex items-center gap-3">
-        <a href="/admin/keys" class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700">API keys</a>
-        <form method="post" action="/admin/logout">
-          <button class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700">Logout</button>
-        </form>
-      </div>
+<div class="flex flex-col gap-8">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-sm font-semibold text-zinc-200">Admin Dashboard</div>
+      <div class="text-xs text-zinc-500">Signed in as {{ admin_user }}</div>
     </div>
 
-    {% if docker_error %}
-      <div class="rounded-xl border border-rose-900/50 bg-rose-950/40 p-5 text-sm text-rose-200">{{ docker_error }}</div>
-    {% endif %}
+    <div class="flex items-center gap-3">
+      <a href="/admin/keys"
+        class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700 transition">
+        API Keys
+      </a>
 
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-      <div class="text-sm font-semibold">Running containers</div>
-      <div class="mt-4 grid gap-2">
-        {% if containers|length == 0 %}
-          <div class="text-sm text-zinc-400">(none)</div>
-        {% endif %}
-        {% for c in containers %}
-          <div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-            <div class="min-w-0">
-              <div class="truncate font-mono text-sm">{{ c.name }}</div>
-              <div class="mt-1 truncate text-xs text-zinc-500">{{ c.image }} • {{ c.status }} • {{ c.id }}</div>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
+      <form method="post" action="/admin/logout">
+        <button
+          class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700 transition">
+          Logout
+        </button>
+      </form>
     </div>
   </div>
+
+
+  {% if docker_error %}
+  <div class="rounded-xl border border-rose-900/50 bg-rose-950/40 p-4 text-sm text-rose-200">
+    {{ docker_error }}
+  </div>
+  {% endif %}
+
+
+  <!-- Main Panel -->
+  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
+
+    <div class="text-sm font-semibold text-zinc-200 mb-10">
+      Running Containers
+    </div>
+
+    {% if projects|length == 0 and others|length == 0 %}
+    <div class="text-sm text-zinc-500">(none)</div>
+    {% endif %}
+
+
+    <!-- Projects -->
+    {% for project in projects %}
+    <div class="mb-12 last:mb-0">
+
+      <!-- Project Title -->
+      <div class="flex items-center gap-3 mb-6">
+        <div class="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>
+        <div class="text-xs font-black uppercase tracking-[0.2em] text-zinc-200">
+          {{ project.project_name }}
+        </div>
+      </div>
+
+
+      <!-- Ladder -->
+      <div class="relative border-l border-zinc-800 ml-2 pl-8 space-y-10">
+
+        {% for stage in project.stages %}
+        <div class="relative">
+
+          <!-- Ladder Node -->
+          <div class="absolute -left-[10px] top-3 h-3 w-3 rounded-full bg-zinc-800 border border-zinc-700"></div>
+
+          <!-- Ladder Rung -->
+          <div class="absolute -left-8 top-4 h-px w-8 bg-zinc-800"></div>
+
+          <!-- Stage Label -->
+          <div class="mb-4">
+            <span
+              class="px-2 py-0.5 text-[10px] font-bold tracking-widest uppercase text-zinc-500 border border-zinc-800 bg-zinc-900 rounded-sm">
+              {{ stage.stage_name }}
+            </span>
+          </div>
+
+
+          <!-- Services -->
+          <div class="space-y-2">
+
+            {% for s in stage.services %}
+            <div
+              class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3 hover:border-zinc-700 hover:bg-zinc-900/40 transition">
+
+              <div class="min-w-0">
+
+                <!-- Service Name -->
+                <div class="font-mono text-sm text-zinc-100 truncate">
+                  {{ s.name }}
+                </div>
+
+                <!-- Service Meta -->
+                <div class="mt-1 flex items-center gap-3 text-[10px] text-zinc-500">
+
+                  <span class="px-1.5 py-0.5 border border-zinc-800 bg-zinc-900 uppercase font-bold tracking-tight">
+                    {{ s.type }}
+                  </span>
+
+                  <span class="font-mono">
+                    {{ s.container_id }}
+                  </span>
+
+                  <span class="h-1 w-1 rounded-full bg-zinc-700"></span>
+
+                  <span class="truncate max-w-[220px]">
+                    {{ s.container_name }}
+                  </span>
+
+                </div>
+
+              </div>
+
+            </div>
+            {% endfor %}
+
+          </div>
+
+        </div>
+        {% endfor %}
+
+      </div>
+
+    </div>
+    {% endfor %}
+
+
+    <!-- Other Containers -->
+    {% if others|length > 0 %}
+    <div class="mt-10">
+
+      <div class="flex items-center gap-2 mb-4">
+        <div class="h-1 w-1 rounded-full bg-zinc-500"></div>
+        <div class="text-xs font-bold uppercase tracking-wider text-zinc-500">
+          Other Containers
+        </div>
+      </div>
+
+      <div class="grid gap-2">
+
+        {% for c in others %}
+        <div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+
+          <div class="min-w-0">
+
+            <div class="truncate font-mono text-sm text-zinc-200">
+              {{ c.name }}
+            </div>
+
+            <div class="mt-1 truncate text-xs text-zinc-500">
+              {{ c.image }} • {{ c.status }} • {{ c.id }}
+            </div>
+
+          </div>
+
+        </div>
+        {% endfor %}
+
+      </div>
+
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
 {% endblock %}

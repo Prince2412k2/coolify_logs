@@ -95,8 +95,18 @@ def list_containers() -> List[ContainerInfo]:
             app = ""
             service = ""
 
+            compose_project = ""
+            compose_service = ""
+
+            try:
+                labels = c.labels or {}
+                compose_project = labels.get("com.docker.compose.project", "")
+                compose_service = labels.get("com.docker.compose.service", "")
+            except Exception:
+                pass
+
             if coolify_available:
-                resource = coolify_db.get_resource(container_name)
+                resource = coolify_db.get_resource(compose_project, compose_service)
                 if resource:
                     project = resource.project
                     environment = resource.environment

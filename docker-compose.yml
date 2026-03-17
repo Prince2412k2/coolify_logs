@@ -17,7 +17,7 @@ services:
   log-gateway:
     build: .
     ports:
-      - "8080:8080"
+      - "8089:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - log_gateway_data:/data

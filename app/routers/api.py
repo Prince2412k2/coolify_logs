@@ -15,6 +15,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+from .. import coolify_db
 from .. import docker_client
 from .. import rate_limit
 from ..auth import check_container_permission, get_api_key
@@ -49,6 +50,38 @@ def containers(
     allowed = set(api_key.allowed_list())
     safe = [c for c in all_running if c.get("name") in allowed]
     return safe
+
+
+@router.get("/projects")
+def projects(
+    api_key: ApiKey = Depends(get_api_key),
+):
+    if not coolify_db.coolify_db.is_configured:
+        raise HTTPException(status_code=503, detail="Coolify DB not configured")
+
+    allowed = set(api_key.allowed_list())
+    results = coolify_db.coolify_db.get_detailed_projects()
+
+    # Filter projects to only include allowed containers
+    filtered_projects = []
+    for p in results:
+        filtered_stages = []
+        for stage in p.get("stages", []):
+            filtered_services = [
+                s for s in stage.get("services", []) 
+                if s.get("container_name") in allowed
+            ]
+            if filtered_services:
+                stage_copy = stage.copy()
+                stage_copy["services"] = filtered_services
+                filtered_stages.append(stage_copy)
+        
+        if filtered_stages:
+            p_copy = p.copy()
+            p_copy["stages"] = filtered_stages
+            filtered_projects.append(p_copy)
+
+    return filtered_projects
 
 
 async def _ws_send_error(ws: WebSocket, message: str, code: int = 4401) -> None:
