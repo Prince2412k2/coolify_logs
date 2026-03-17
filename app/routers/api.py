@@ -107,6 +107,13 @@ def _ws_bearer_from_headers(ws: WebSocket) -> Optional[str]:
 
 
 
+@router.websocket("/logs/{container_name}/ping")
+async def logs_ping_ws(websocket: WebSocket, container_name: str):
+    await websocket.accept()
+    await websocket.send_text(json.dumps({"type": "pong", "container": container_name}))
+    await websocket.close()
+
+
 @router.websocket("/logs/{container_name}")
 async def logs_ws(websocket: WebSocket, container_name: str):
     # Retrieve tail from query params manually
@@ -117,86 +124,62 @@ async def logs_ws(websocket: WebSocket, container_name: str):
             tail_val = int(q_tail)
     except (ValueError, TypeError):
         pass
-        
-    await websocket.accept()
 
-    if rate_limit.enabled():
-        peer = websocket.client.host if websocket.client else None
-        ip = rate_limit.client_ip(peer, dict(websocket.headers))
-        res = websocket.app.state.api_limiter.allow(ip)
-        if not res.allowed:
-            await _ws_send_error(websocket, "Rate limit exceeded", code=4429)
-            return
-
+    # validate container
     try:
         _validate_container_name(container_name)
     except HTTPException as e:
-        await _ws_send_error(websocket, str(e.detail), code=4400)
+        await websocket.close(code=4400)
         return
 
+    # Check token from headers or query params
     token = _ws_bearer_from_headers(websocket)
-    auth_tail = None
     if not token:
-        # Browser-friendly auth: expect first message with token.
-        try:
-            raw = await websocket.receive_text()
-            msg = json.loads(raw)
-            if isinstance(msg, dict) and msg.get("type") == "auth":
-                token = str(msg.get("token") or "").strip() or None
-                if msg.get("tail") is not None:
-                    auth_tail = int(msg.get("tail"))
-        except WebSocketDisconnect:
-            return
-        except Exception:
-            token = None
+        token = websocket.query_params.get("token")
 
     if not token:
-        await _ws_send_error(websocket, "Missing API key", code=4401)
+        await websocket.close(code=4401)
         return
-
-    # Validate token against DB on every WS connect.
-    from ..models import ApiKey as ApiKeyModel
 
     SessionLocal = websocket.app.state.SessionLocal
     db = SessionLocal()
+
     try:
+        from ..models import ApiKey as ApiKeyModel
         api_key = db.get(ApiKeyModel, token)
         if not api_key:
-            await _ws_send_error(websocket, "Invalid API key", code=4401)
+            await websocket.close(code=4401)
             return
 
-        # Get actual container to resolve name/ID and check permissions
+        # Get actual container to resolve name/ID 
         try:
             container_obj = docker_client._client().containers.get(container_name)
             actual_name = container_obj.name.lstrip("/")
-        except (NotFound, docker_client.DockerUnavailable):
-            await _ws_send_error(websocket, "Container not found", code=4404)
-            return
         except Exception:
-            await _ws_send_error(websocket, "Internal server error", code=4511)
+            await websocket.close(code=4404)
             return
 
         try:
             check_container_permission(api_key, actual_name)
-        except HTTPException as e:
-            await _ws_send_error(websocket, str(e.detail), code=4403)
+        except Exception:
+            await websocket.close(code=4403)
             return
 
-        effective_tail = int(auth_tail if auth_tail is not None else tail_val)
+        # ACCEPT ONLY AFTER AUTH AND PERMISSION CHECKS
+        await websocket.accept()
+
         try:
-            async for line in docker_client.stream_logs(
-                actual_name, tail=effective_tail
-            ):
+            async for line in docker_client.stream_logs(actual_name, tail=tail_val):
                 await websocket.send_text(json.dumps({"type": "log", "line": line}))
         except NotFound:
-            await _ws_send_error(websocket, "Container not found", code=4404)
+            await websocket.close(code=4404)
         except docker_client.DockerUnavailable:
-            await _ws_send_error(websocket, "Docker socket unavailable", code=4503)
+            await websocket.close(code=1011)
         except APIError:
-            await _ws_send_error(websocket, "Docker API error", code=4502)
+            await websocket.close(code=1011)
         except WebSocketDisconnect:
-            return
+            pass
         except Exception:
-            await _ws_send_error(websocket, "Internal server error", code=4511)
+            await websocket.close(code=1011)
     finally:
         db.close()
