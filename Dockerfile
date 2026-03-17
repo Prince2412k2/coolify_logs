@@ -24,4 +24,4 @@ COPY app/ ./app/
 COPY --from=tailwind /tw/app/static/tailwind.css ./app/static/tailwind.css
 EXPOSE 8080
 VOLUME ["/data"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]

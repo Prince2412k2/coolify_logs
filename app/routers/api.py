@@ -108,7 +108,16 @@ def _ws_bearer_from_headers(ws: WebSocket) -> Optional[str]:
 
 
 @router.websocket("/logs/{container_name}")
-async def logs_ws(websocket: WebSocket, container_name: str, tail: int = 100):
+async def logs_ws(websocket: WebSocket, container_name: str):
+    # Retrieve tail from query params manually
+    tail_val = 100
+    try:
+        q_tail = websocket.query_params.get("tail")
+        if q_tail:
+            tail_val = int(q_tail)
+    except (ValueError, TypeError):
+        pass
+        
     await websocket.accept()
 
     if rate_limit.enabled():
@@ -173,7 +182,7 @@ async def logs_ws(websocket: WebSocket, container_name: str, tail: int = 100):
             await _ws_send_error(websocket, str(e.detail), code=4403)
             return
 
-        effective_tail = int(auth_tail if auth_tail is not None else tail)
+        effective_tail = int(auth_tail if auth_tail is not None else tail_val)
         try:
             async for line in docker_client.stream_logs(
                 actual_name, tail=effective_tail
