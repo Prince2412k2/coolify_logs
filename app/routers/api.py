@@ -23,7 +23,7 @@ from ..database import get_db
 from ..models import ApiKey
 
 
-CONTAINER_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+CONTAINER_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -102,12 +102,6 @@ def _ws_bearer_from_headers(ws: WebSocket) -> Optional[str]:
         return None
     token = parts[1].strip()
     return token or None
-
-
-@router.get("/logs/{container_name}")
-async def logs_http_redirect(container_name: str):
-    """Fallback for when WebSocket handshake fails or is downgraded by proxy."""
-    return {"error": "WebSocket connection required for logs", "path": f"/api/logs/{container_name}"}
 
 
 @router.websocket("/logs/{container_name}")
