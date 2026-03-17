@@ -46,8 +46,23 @@ def create_app() -> FastAPI:
         app.state.api_limiter = rate_limit.api_limiter()
         app.state.admin_login_limiter = rate_limit.admin_login_limiter()
 
+        # Initialize Coolify DB connection
+        from .coolify_db import coolify_db
+
+        connected, message = coolify_db.initialize()
+        if connected:
+            logging.getLogger("log-gateway").info(f"Coolify DB: {message}")
+        else:
+            logging.getLogger("log-gateway").warning(f"Coolify DB: {message}")
+
     @app.on_event("shutdown")
     def _shutdown() -> None:
+        try:
+            from .coolify_db import coolify_db
+
+            coolify_db.stop()
+        except Exception:
+            pass
         try:
             engine.dispose()
         except Exception:

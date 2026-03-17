@@ -23,6 +23,10 @@ class ContainerInfo:
     id: str
     status: str
     image: str
+    project: str = ""
+    environment: str = ""
+    app: str = ""
+    service: str = ""
 
     def as_dict(self) -> Dict[str, str]:
         return {
@@ -30,7 +34,23 @@ class ContainerInfo:
             "id": self.id,
             "status": self.status,
             "image": self.image,
+            "project": self.project,
+            "environment": self.environment,
+            "app": self.app,
+            "service": self.service,
         }
+
+    def display_name(self) -> str:
+        if self.project:
+            parts = [self.project]
+            if self.environment:
+                parts.append(self.environment)
+            if self.service:
+                parts.append(self.service)
+            elif self.app:
+                parts.append(self.app)
+            return "/".join(parts)
+        return self.name
 
 
 def _client():
@@ -51,6 +71,14 @@ def list_containers() -> List[ContainerInfo]:
         raise DockerUnavailable("Docker socket unavailable") from e
 
     out: List[ContainerInfo] = []
+
+    try:
+        from . import coolify_db
+
+        coolify_available = coolify_db.is_configured
+    except Exception:
+        coolify_available = False
+
     for c in containers:
         try:
             img = ""
@@ -59,16 +87,35 @@ def list_containers() -> List[ContainerInfo]:
                 img = tags[0] if tags else (getattr(c.image, "short_id", "") or "")
             except Exception:
                 img = ""
+
+            container_name = str(getattr(c, "name", "")).lstrip("/")
+
+            project = ""
+            environment = ""
+            app = ""
+            service = ""
+
+            if coolify_available:
+                resource = coolify_db.get_resource(container_name)
+                if resource:
+                    project = resource.project
+                    environment = resource.environment
+                    app = resource.app
+                    service = resource.service
+
             out.append(
                 ContainerInfo(
-                    name=str(getattr(c, "name", "")).lstrip("/"),
+                    name=container_name,
                     id=str(getattr(c, "id", ""))[:12],
                     status=str(getattr(c, "status", "")),
                     image=str(img),
+                    project=project,
+                    environment=environment,
+                    app=app,
+                    service=service,
                 )
             )
         except Exception:
-            # Skip malformed entries; never leak raw docker object.
             continue
     return out
 
