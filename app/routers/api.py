@@ -104,8 +104,14 @@ def _ws_bearer_from_headers(ws: WebSocket) -> Optional[str]:
     return token or None
 
 
+@router.get("/logs/{container_name}")
+async def logs_http_redirect(container_name: str):
+    """Fallback for when WebSocket handshake fails or is downgraded by proxy."""
+    return {"error": "WebSocket connection required for logs", "path": f"/api/logs/{container_name}"}
+
+
 @router.websocket("/logs/{container_name}")
-async def logs_ws(websocket: WebSocket, container_name: str, tail: int = 100):
+async def logs_ws(websocket: WebSocket, container_name: str, tail: Optional[int] = None):
     await websocket.accept()
 
     if rate_limit.enabled():
@@ -152,8 +158,20 @@ async def logs_ws(websocket: WebSocket, container_name: str, tail: int = 100):
         if not api_key:
             await _ws_send_error(websocket, "Invalid API key", code=4401)
             return
+
+        # Get actual container to resolve name/ID and check permissions
         try:
-            check_container_permission(api_key, container_name)
+            container_obj = docker_client._client().containers.get(container_name)
+            actual_name = container_obj.name.lstrip("/")
+        except (NotFound, docker_client.DockerUnavailable):
+            await _ws_send_error(websocket, "Container not found", code=4404)
+            return
+        except Exception:
+            await _ws_send_error(websocket, "Internal server error", code=4511)
+            return
+
+        try:
+            check_container_permission(api_key, actual_name)
         except HTTPException as e:
             await _ws_send_error(websocket, str(e.detail), code=4403)
             return
@@ -161,7 +179,7 @@ async def logs_ws(websocket: WebSocket, container_name: str, tail: int = 100):
         effective_tail = int(auth_tail if auth_tail is not None else tail)
         try:
             async for line in docker_client.stream_logs(
-                container_name, tail=effective_tail
+                actual_name, tail=effective_tail
             ):
                 await websocket.send_text(json.dumps({"type": "log", "line": line}))
         except NotFound:

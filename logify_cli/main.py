@@ -16,12 +16,25 @@ import click
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
+
+__version__ = "0.3.0"
 
 console = Console()
 app = typer.Typer(add_completion=True, no_args_is_help=True)
 auth_app = typer.Typer(no_args_is_help=True)
 app.add_typer(auth_app, name="auth")
+
+def version_callback(value: bool):
+    if value:
+        console.print(f"logify [bold cyan]v{__version__}[/bold cyan]")
+        raise typer.Exit()
+
+@app.command("version")
+def version():
+    """Show CLI version."""
+    console.print(f"logify [bold cyan]v{__version__}[/bold cyan]")
 
 
 def _config_dir() -> Path:
@@ -203,45 +216,79 @@ def containers(
     server, key = _resolve_server_and_key(server, key)
     _require_key(key)
 
-    url = _join_url(server, "/api/containers")
     headers = {"Authorization": f"Bearer {key}"}
+    
+    # 1. Fetch Projects (Hierarchical)
     try:
-        with httpx.Client(timeout=30.0) as client:
-            r = client.get(url, headers=headers)
+        with httpx.Client(timeout=10.0) as client:
+            r_projects = client.get(_join_url(server, "/api/projects"), headers=headers)
+            r_containers = client.get(_join_url(server, "/api/containers"), headers=headers)
     except Exception as e:
         console.print(f"[red]error:[/red] failed to call server: {e}")
         raise typer.Exit(1)
 
-    if r.status_code != 200:
-        try:
-            data = r.json()
-            msg = data.get("error") if isinstance(data, dict) else None
-            msg = msg or r.text
-        except Exception:
-            msg = r.text
-        console.print(f"[red]error:[/red] {msg}")
+    if r_projects.status_code != 200:
+        console.print(f"[red]error (projects):[/red] {r_projects.text}")
         raise typer.Exit(1)
 
-    data = r.json()
-    if not isinstance(data, list) or not data:
+    projects_data = r_projects.json()
+    containers_data = r_containers.json() if r_containers.status_code == 200 else []
+
+    if not projects_data and not containers_data:
         console.print("(no allowed running containers)")
         raise typer.Exit(0)
 
-    t = Table(show_header=True, header_style="bold")
-    t.add_column("NAME", style="cyan", no_wrap=True)
-    t.add_column("STATUS", style="magenta")
-    t.add_column("IMAGE")
-    t.add_column("ID", style="dim")
-    for c in data:
-        if not isinstance(c, dict):
-            continue
-        t.add_row(
-            str(c.get("name", "")),
-            str(c.get("status", "")),
-            str(c.get("image", "")),
-            str(c.get("id", "")),
-        )
-    console.print(t)
+    # 2. Track which containers are already shown in projects
+    shown_names = set()
+    shown_ids = set()
+
+    # 3. Create the Tree (The Ladder View)
+    tree = Tree("[bold cyan]Running Containers[/bold cyan]")
+
+    for p in projects_data:
+        p_name = p.get("project_name", "Unknown Project")
+        p_node = tree.add(f"[bold #10b981]● {p_name}[/bold #10b981]", guide_style="#10b981")
+        
+        for stage in p.get("stages", []):
+            s_name = stage.get("stage_name", "Unknown Stage")
+            s_node = p_node.add(f"[bold white on #1a1a1a] {s_name} [/bold white on #1a1a1a]")
+            
+            for s in stage.get("services", []):
+                name = s.get("name")
+                c_name = s.get("container_name")
+                c_id = s.get("container_id")
+                res_type = s.get("type", "app").upper()
+                
+                label = Text()
+                label.append(f"{name}", style="bold green")
+                label.append(f" ({res_type})", style="dim italic")
+                label.append(f"  {c_id}", style="dim")
+                
+                s_node.add(label)
+                
+                if c_name:
+                    shown_names.add(c_name)
+                if c_id:
+                    shown_ids.add(c_id)
+
+    # 4. Add "Other" containers
+    others = []
+    for c in containers_data:
+        c_name = c.get("name")
+        c_id = c.get("id")
+        short_id = c_id[:12] if c_id else ""
+        if c_name not in shown_names and short_id not in shown_ids:
+            others.append(c)
+
+    if others:
+        other_node = tree.add("[bold dim]○ Other Containers[/bold dim]", guide_style="dim")
+        for c in others:
+            label = Text()
+            label.append(str(c.get("name", "")), style="cyan")
+            label.append(f"  {c.get('id', '')[:12]}", style="dim")
+            other_node.add(label)
+
+    console.print(tree)
 
 
 async def _ws_logs(ws_url: str, key: str, tail: int, grep: Optional[str]) -> int:
@@ -289,7 +336,7 @@ async def _ws_logs(ws_url: str, key: str, tail: int, grep: Optional[str]) -> int
 @app.command("logs")
 def logs(
     container: str = typer.Argument(
-        ..., help="Container name", shell_complete=_shell_complete_container
+        ..., help="Container name or hash", shell_complete=_shell_complete_container
     ),
     server: Optional[str] = typer.Option(
         None, help="Server base URL (defaults to config or http://localhost:8080)"
@@ -298,19 +345,43 @@ def logs(
     tail: int = typer.Option(100, help="Show last N lines before follow"),
     grep: Optional[str] = typer.Option(None, help="Regex filter applied client-side"),
 ):
+    """View and follow container logs."""
     server, key = _resolve_server_and_key(server, key)
     _require_key(key)
 
     base = server.rstrip("/")
     ws_base = _to_ws_url(base)
     ws_url = _join_url(ws_base, f"/api/logs/{container}") + f"?tail={int(tail)}"
+    
+    console.print(f"[bold emerald]Connected to {container}[/bold emerald] [dim](tail {tail})[/dim]")
+    
     raise typer.Exit(
         asyncio.run(_ws_logs(ws_url=ws_url, key=key, tail=tail, grep=grep))
     )
 
 
+@app.command("follow")
+def follow(
+    container: str = typer.Argument(
+        ..., help="Container name or hash", shell_complete=_shell_complete_container
+    ),
+    server: Optional[str] = typer.Option(
+        None, help="Server base URL (defaults to config or http://localhost:8080)"
+    ),
+    key: Optional[str] = typer.Option(None, help="API key (defaults to config)"),
+    tail: int = typer.Option(100, help="Show last N lines before follow"),
+    grep: Optional[str] = typer.Option(None, help="Regex filter applied client-side"),
+):
+    """Alias for 'logs' command."""
+    return logs(container=container, server=server, key=key, tail=tail, grep=grep)
+
+
 @app.callback()
-def _completion_hint():
+def _completion_hint(
+    version: Optional[bool] = typer.Option(
+        None, "--version", "-v", callback=version_callback, is_eager=True, help="Show version and exit"
+    )
+):
     """Docker Log Gateway CLI."""
 
 
