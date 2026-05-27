@@ -73,7 +73,7 @@ def list_containers() -> List[ContainerInfo]:
     out: List[ContainerInfo] = []
 
     try:
-        from . import coolify_db
+        from .coolify_db import coolify_db
 
         coolify_available = coolify_db.is_configured
     except Exception:

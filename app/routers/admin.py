@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import coolify_db
+from ..coolify_db import coolify_db
 from .. import docker_client
 from .. import rate_limit
 from ..auth import (
@@ -53,7 +53,11 @@ def login_post(
     if not (compare_digest(username, admin_u) and compare_digest(password, admin_p)):
         return _templates(request).TemplateResponse(
             "admin_login.html",
-            {"request": request, "error": "Invalid credentials"},
+            {
+                "request": request,
+                "error": "Invalid credentials",
+                "max_age": ADMIN_SESSION_MAX_AGE_SECONDS,
+            },
             status_code=401,
         )
 
@@ -74,7 +78,7 @@ def logout_post(request: Request):
 def admin_index(request: Request, admin_user: str = Depends(require_admin)):
     try:
         # Get all projects
-        projects = coolify_db.coolify_db.get_detailed_projects()
+        projects = coolify_db.get_detailed_projects()
         
         # Also get all containers to find ones not in projects
         all_containers = [c.as_dict() for c in docker_client.list_containers()]
@@ -90,7 +94,12 @@ def admin_index(request: Request, admin_user: str = Depends(require_admin)):
                         in_projects.add(s.get("container_id"))
         
         # Find "Other" containers
-        others = [c for c in all_containers if c.get("name") not in in_projects and c.get("id")[:12] not in in_projects]
+        others = [
+            c
+            for c in all_containers
+            if c.get("name") not in in_projects
+            and (c.get("id", "")[:12] not in in_projects)
+        ]
         
         docker_error = None
     except docker_client.DockerUnavailable:
@@ -117,15 +126,23 @@ def admin_index(request: Request, admin_user: str = Depends(require_admin)):
 def _render_keys_partial(request: Request, db: Session):
     keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
     try:
-        projects = coolify_db.coolify_db.get_detailed_projects()
+        projects = coolify_db.get_detailed_projects()
         all_containers = [c.as_dict() for c in docker_client.list_containers()]
         
         in_projects = set()
         for p in projects:
-            for s in p.get("services", []):
-                in_projects.add(s.get("container_name"))
-        
-        others = [c for c in all_containers if c.get("name") not in in_projects]
+            for stage in p.get("stages", []):
+                for s in stage.get("services", []):
+                    if s.get("container_name") and s.get("container_name") != "Not Found":
+                        in_projects.add(s.get("container_name"))
+                    if s.get("container_id") and s.get("container_id") != "Not Found":
+                        in_projects.add(s.get("container_id"))
+
+        others = [
+            c
+            for c in all_containers
+            if c.get("name") not in in_projects and c.get("id", "")[:12] not in in_projects
+        ]
     except docker_client.DockerUnavailable:
         projects = []
         others = []
@@ -150,15 +167,23 @@ def keys_get(
     _ = admin_user
     keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
     try:
-        projects = coolify_db.coolify_db.get_detailed_projects()
+        projects = coolify_db.get_detailed_projects()
         all_containers = [c.as_dict() for c in docker_client.list_containers()]
         
         in_projects = set()
         for p in projects:
-            for s in p.get("services", []):
-                in_projects.add(s.get("container_name"))
-        
-        others = [c for c in all_containers if c.get("name") not in in_projects]
+            for stage in p.get("stages", []):
+                for s in stage.get("services", []):
+                    if s.get("container_name") and s.get("container_name") != "Not Found":
+                        in_projects.add(s.get("container_name"))
+                    if s.get("container_id") and s.get("container_id") != "Not Found":
+                        in_projects.add(s.get("container_id"))
+
+        others = [
+            c
+            for c in all_containers
+            if c.get("name") not in in_projects and c.get("id", "")[:12] not in in_projects
+        ]
     except docker_client.DockerUnavailable:
         projects = []
         others = []

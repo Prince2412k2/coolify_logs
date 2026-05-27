@@ -1,171 +1,322 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard{% endblock %}
+{% block title %}Dashboard — logstream admin{% endblock %}
+
+{% block nav_links %}
+<a href="/admin/keys" class="nav-link">API Keys</a>
+<form method="post" action="/admin/logout" style="margin:0">
+  <button class="nav-link" style="background:none;border:none;cursor:pointer;font-family:inherit">Logout</button>
+</form>
+{% endblock %}
+
+{% block head %}
+<style>
+  .dash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding-top: 28px;
+    flex-wrap: wrap;
+  }
+  .dash-title { font-size: 18px; font-weight: 400; letter-spacing: -0.01em; }
+  .dash-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .dash-actions { display: flex; gap: 8px; }
+
+  /* Stats row */
+  .stats-row {
+    display: flex;
+    gap: 1px;
+    background: var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 28px;
+    border: 1px solid var(--border);
+  }
+  .stat-cell {
+    flex: 1;
+    background: var(--surface);
+    padding: 14px 18px;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 500;
+  }
+
+  /* Section */
+  .section { margin-bottom: 36px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .section-title-text {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .section-rule { flex: 1; height: 1px; background: var(--border); }
+  .section-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  /* Project block */
+  .project-block { margin-bottom: 28px; }
+  .project-header-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .project-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(245,158,11,0.4);
+    flex-shrink: 0;
+  }
+  .project-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .project-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--border);
+    padding: 1px 7px;
+    border-radius: 10px;
+  }
+
+  /* Stage */
+  .stage-tree {
+    margin-left: 16px;
+    border-left: 1px solid var(--border);
+    padding-left: 20px;
+    margin-bottom: 8px;
+  }
+  .stage-row {
+    position: relative;
+    margin-bottom: 14px;
+  }
+  .stage-row::before {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: 11px;
+    width: 14px;
+    height: 1px;
+    background: var(--border);
+  }
+  .stage-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dim);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 10px;
+  }
+
+  /* Service list */
+  .service-list { display: flex; flex-direction: column; gap: 4px; }
+  .service-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: all 0.1s;
+  }
+  .service-row:hover { border-color: var(--border-hi); background: rgba(255,255,255,0.03); }
+  .service-info { flex: 1; min-width: 0; }
+  .service-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+  .service-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .service-id { color: var(--dim); }
+  .service-not-found { color: #dc2626; font-size: 10px; font-family: var(--mono); }
+
+  /* Other containers */
+  .other-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 6px;
+  }
+  .other-card {
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.01);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .other-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .other-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="flex flex-col gap-8">
-
-  <!-- Header -->
-  <div class="flex items-center justify-between">
+<div class="page">
+  <div class="dash-header">
     <div>
-      <div class="text-sm font-semibold text-zinc-200">Admin Dashboard</div>
-      <div class="text-xs text-zinc-500">Signed in as {{ admin_user }}</div>
+      <div class="dash-title">Dashboard</div>
+      <div class="dash-sub">Signed in as {{ admin_user }}</div>
     </div>
-
-    <div class="flex items-center gap-3">
-      <a href="/admin/keys"
-        class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700 transition">
-        API Keys
-      </a>
-
-      <form method="post" action="/admin/logout">
-        <button
-          class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700 transition">
-          Logout
-        </button>
-      </form>
+    <div class="dash-actions">
+      <a href="/admin/keys" class="btn btn-ghost btn-sm">API Keys</a>
     </div>
   </div>
 
-
   {% if docker_error %}
-  <div class="rounded-xl border border-rose-900/50 bg-rose-950/40 p-4 text-sm text-rose-200">
-    {{ docker_error }}
+  <div class="alert alert-error" style="margin-bottom:20px">
+    <strong>Docker error:</strong> {{ docker_error }}
   </div>
   {% endif %}
 
+  {% set total_containers = others|length %}
+  {% for p in projects %}{% for s in p.stages %}{% set total_containers = total_containers + s.services|length %}{% endfor %}{% endfor %}
 
-  <!-- Main Panel -->
-  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-
-    <div class="text-sm font-semibold text-zinc-200 mb-10">
-      Running Containers
+  <div class="stats-row">
+    <div class="stat-cell">
+      <div class="stat-value">{{ projects|length }}</div>
+      <div class="stat-label">Projects</div>
     </div>
-
-    {% if projects|length == 0 and others|length == 0 %}
-    <div class="text-sm text-zinc-500">(none)</div>
-    {% endif %}
-
-
-    <!-- Projects -->
-    {% for project in projects %}
-    <div class="mb-12 last:mb-0">
-
-      <!-- Project Title -->
-      <div class="flex items-center gap-3 mb-6">
-        <div class="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>
-        <div class="text-xs font-black uppercase tracking-[0.2em] text-zinc-200">
-          {{ project.project_name }}
-        </div>
-      </div>
-
-
-      <!-- Ladder -->
-      <div class="relative border-l border-zinc-800 ml-2 pl-8 space-y-10">
-
-        {% for stage in project.stages %}
-        <div class="relative">
-
-          <!-- Ladder Node -->
-          <div class="absolute -left-[10px] top-3 h-3 w-3 rounded-full bg-zinc-800 border border-zinc-700"></div>
-
-          <!-- Ladder Rung -->
-          <div class="absolute -left-8 top-4 h-px w-8 bg-zinc-800"></div>
-
-          <!-- Stage Label -->
-          <div class="mb-4">
-            <span
-              class="px-2 py-0.5 text-[10px] font-bold tracking-widest uppercase text-zinc-500 border border-zinc-800 bg-zinc-900 rounded-sm">
-              {{ stage.stage_name }}
-            </span>
-          </div>
-
-
-          <!-- Services -->
-          <div class="space-y-2">
-
-            {% for s in stage.services %}
-            <div
-              class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3 hover:border-zinc-700 hover:bg-zinc-900/40 transition">
-
-              <div class="min-w-0">
-
-                <!-- Service Name -->
-                <div class="font-mono text-sm text-zinc-100 truncate">
-                  {{ s.name }}
-                </div>
-
-                <!-- Service Meta -->
-                <div class="mt-1 flex items-center gap-3 text-[10px] text-zinc-500">
-
-                  <span class="px-1.5 py-0.5 border border-zinc-800 bg-zinc-900 uppercase font-bold tracking-tight">
-                    {{ s.type }}
-                  </span>
-
-                  <span class="font-mono">
-                    {{ s.container_id }}
-                  </span>
-
-                  <span class="h-1 w-1 rounded-full bg-zinc-700"></span>
-
-                  <span class="truncate max-w-[220px]">
-                    {{ s.container_name }}
-                  </span>
-
-                </div>
-
-              </div>
-
-            </div>
-            {% endfor %}
-
-          </div>
-
-        </div>
-        {% endfor %}
-
-      </div>
-
+    <div class="stat-cell">
+      <div class="stat-value">{{ total_containers }}</div>
+      <div class="stat-label">Containers</div>
     </div>
-    {% endfor %}
-
-
-    <!-- Other Containers -->
-    {% if others|length > 0 %}
-    <div class="mt-10">
-
-      <div class="flex items-center gap-2 mb-4">
-        <div class="h-1 w-1 rounded-full bg-zinc-500"></div>
-        <div class="text-xs font-bold uppercase tracking-wider text-zinc-500">
-          Other Containers
-        </div>
-      </div>
-
-      <div class="grid gap-2">
-
-        {% for c in others %}
-        <div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-
-          <div class="min-w-0">
-
-            <div class="truncate font-mono text-sm text-zinc-200">
-              {{ c.name }}
-            </div>
-
-            <div class="mt-1 truncate text-xs text-zinc-500">
-              {{ c.image }} • {{ c.status }} • {{ c.id }}
-            </div>
-
-          </div>
-
-        </div>
-        {% endfor %}
-
-      </div>
-
+    <div class="stat-cell">
+      <div class="stat-value">{{ others|length }}</div>
+      <div class="stat-label">Untracked</div>
     </div>
-    {% endif %}
-
+    <div class="stat-cell">
+      <div class="stat-value" style="color:var(--green)">.</div>
+      <div class="stat-label">Docker connected</div>
+    </div>
   </div>
 
+  {% if projects|length > 0 %}
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title-text">Projects</div>
+      <div class="section-rule"></div>
+      <div class="section-count">{{ projects|length }}</div>
+    </div>
+
+    {% for project in projects %}
+    <div class="project-block">
+      <div class="project-header-row">
+        <div class="project-dot"></div>
+        <div class="project-title">{{ project.project_name }}</div>
+        {% set svc_count = namespace(n=0) %}
+        {% for s in project.stages %}{% set svc_count.n = svc_count.n + s.services|length %}{% endfor %}
+        <div class="project-badge">{{ svc_count.n }} service{{ 's' if svc_count.n != 1 else '' }}</div>
+      </div>
+
+      <div class="stage-tree">
+        {% for stage in project.stages %}
+        <div class="stage-row">
+          <div class="stage-tag">{{ stage.stage_name }}</div>
+          <div class="service-list">
+            {% for s in stage.services %}
+            <div class="service-row">
+              <div class="service-info">
+                <div class="service-name">{{ s.name }}</div>
+                <div class="service-meta">
+                  <span class="badge badge-{{ s.type }}">{{ s.type }}</span>
+                  {% if s.container_id != 'Not Found' %}
+                  <span class="service-id">{{ s.container_id }}</span>
+                  {% endif %}
+                  {% if s.container_name != 'Not Found' %}
+                  <span style="color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.container_name }}</span>
+                  {% else %}
+                  <span class="service-not-found">! not running</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if others|length > 0 %}
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title-text">Other Containers</div>
+      <div class="section-rule"></div>
+      <div class="section-count">{{ others|length }}</div>
+    </div>
+    <div class="other-grid">
+      {% for c in others %}
+      <div class="other-card">
+        <div class="other-name" title="{{ c.name }}">{{ c.name }}</div>
+        <div class="other-meta">{{ c.image }} · {{ c.status }} · {{ c.id }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if projects|length == 0 and others|length == 0 and not docker_error %}
+  <div style="text-align:center;padding:60px 20px;color:var(--muted)">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px">No containers</div>
+    <div style="font-size:12px">No running containers found. Start some Docker containers and refresh.</div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

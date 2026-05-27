@@ -1,18 +1,356 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}Coolify Logs{% endblock %}</title>
-    <link rel="stylesheet" href="/static/tailwind.css" />
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  </head>
-  <body class="min-h-screen bg-zinc-950 text-zinc-100">
-    <div class="mx-auto max-w-6xl px-4 py-6">
-      <div class="flex items-center justify-between gap-4">
-        <a href="/" class="text-lg font-semibold tracking-tight">Coolify logs</a>
-      </div>
-      <div class="mt-6">{% block content %}{% endblock %}</div>
-    </div>
-  </body>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}logstream{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Berkeley+Mono&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/tailwind.css" />
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #111111;
+      --border:    #1f1f1f;
+      --border-hi: #2e2e2e;
+      --text:      #e8e8e8;
+      --muted:     #555;
+      --dim:       #333;
+      --amber:     #f59e0b;
+      --amber-dim: #78490a;
+      --green:     #22c55e;
+      --rose:      #f43f5e;
+      --sky:       #38bdf8;
+      --mono: 'Berkeley Mono', 'JetBrains Mono', 'Fira Code', monospace;
+      --sans: 'DM Sans', system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 13px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* Subtle grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #root { position: relative; z-index: 1; }
+
+    /* Nav */
+    .nav {
+      height: 44px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+      background: rgba(10,10,10,0.95);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-logo::before {
+      content: '▸';
+      color: var(--amber);
+      font-size: 10px;
+    }
+    .nav-sep { flex: 1; }
+    .nav-link {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .nav-link:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    .nav-link.active { color: var(--text); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.12s;
+      letter-spacing: 0.01em;
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--amber);
+      color: #000;
+      border-color: var(--amber);
+    }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border-hi);
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--muted); background: rgba(255,255,255,0.04); }
+    .btn-danger {
+      background: transparent;
+      color: #f87171;
+      border-color: #3f1515;
+    }
+    .btn-danger:hover { background: rgba(244,63,94,0.08); border-color: #7f1d1d; }
+    .btn-live {
+      background: var(--green);
+      color: #000;
+      border-color: var(--green);
+    }
+    .btn-live:hover { background: #4ade80; }
+    .btn-stop {
+      background: var(--rose);
+      color: #fff;
+      border-color: var(--rose);
+    }
+    .btn-stop:hover { background: #fb7185; }
+    .btn-sm {
+      font-size: 11px;
+      padding: 4px 10px;
+    }
+    .btn-icon {
+      padding: 5px 8px;
+    }
+
+    /* Cards / Panels */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    /* Form controls */
+    .input {
+      background: #0d0d0d;
+      border: 1px solid var(--border-hi);
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-family: var(--sans);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+    .input:focus { border-color: var(--amber); }
+    .input::placeholder { color: var(--dim); }
+    .input-mono { font-family: var(--mono); font-size: 12px; }
+
+    label.field { display: block; }
+    .field-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 5px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    /* Status dots */
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .dot-idle   { background: var(--dim); }
+    .dot-live   { background: var(--green); box-shadow: 0 0 8px rgba(34,197,94,0.5); animation: pulse-dot 2s ease-in-out infinite; }
+    .dot-warn   { background: var(--amber); }
+    .dot-error  { background: var(--rose); }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Badges */
+    .badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge-application { color: #818cf8; border-color: #312e81; background: rgba(99,102,241,0.08); }
+    .badge-service     { color: #34d399; border-color: #064e3b; background: rgba(16,185,129,0.08); }
+    .badge-other       { color: var(--muted); border-color: var(--dim); }
+
+    /* Alerts */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      border: 1px solid;
+    }
+    .alert-error { background: rgba(244,63,94,0.06); border-color: #5c1a2a; color: #fda4af; }
+    .alert-info  { background: rgba(56,189,248,0.06); border-color: #0c4a6e; color: #7dd3fc; }
+
+    /* Page wrapper */
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+    .page-wide {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 20px;
+    }
+
+    /* Mono text helpers */
+    .mono { font-family: var(--mono); }
+    .text-muted { color: var(--muted); }
+    .text-dim { color: var(--dim); }
+    .text-amber { color: var(--amber); }
+    .text-green { color: var(--green); }
+    .text-rose { color: var(--rose); }
+    .text-sky { color: var(--sky); }
+
+    /* Divider */
+    hr.rule { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    /* Checkbox custom */
+    input[type=checkbox] {
+      accent-color: var(--amber);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* Transition helper */
+    .transition-fast { transition: all 0.12s; }
+
+    /* Toast */
+    #toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      background: #1a1a1a;
+      border: 1px solid var(--border-hi);
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--text);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      animation: toast-in 0.2s ease;
+      pointer-events: auto;
+    }
+    .toast.success { border-color: #14532d; color: var(--green); }
+    .toast.error   { border-color: #5c1a2a; color: #fda4af; }
+    @keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div id="root">
+  <nav class="nav">
+    <a href="/" class="nav-logo">logstream</a>
+    <div class="nav-sep"></div>
+    {% block nav_links %}{% endblock %}
+  </nav>
+  <div>{% block content %}{% endblock %}</div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// Global toast utility
+function toast(msg, type='') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.3s'; setTimeout(()=>t.remove(),300); }, 2200);
+}
+
+// Global copy utility
+function copyText(text, label) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('Copied: ' + (label || ''), 'success'))
+      .catch(() => fallbackCopy(text, label));
+  } else {
+    fallbackCopy(text, label);
+  }
+}
+
+function fallbackCopy(text, label) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    document.execCommand('copy');
+    toast('Copied: ' + (label || ''), 'success');
+  } catch(e) {
+    toast('Copy failed', 'error');
+  }
+  document.body.removeChild(ta);
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
 </html>

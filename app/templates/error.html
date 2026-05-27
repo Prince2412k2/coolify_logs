@@ -1,9 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Error{% endblock %}
+{% block title %}Error {{ status }} — logstream{% endblock %}
+
 {% block content %}
-  <div class="rounded-xl border border-rose-900/50 bg-rose-950/40 p-6">
-    <div class="text-sm font-semibold">Error {{ status }}</div>
-    <div class="mt-2 text-sm text-rose-100">{{ message }}</div>
-    <div class="mt-4 text-xs text-rose-200/70">No stack traces are exposed to clients.</div>
+<div style="min-height:calc(100vh - 44px);display:flex;align-items:center;justify-content:center;padding:32px 20px">
+  <div style="max-width:440px;width:100%">
+    <div style="font-family:var(--mono);font-size:64px;font-weight:700;color:var(--border);line-height:1;margin-bottom:20px">
+      {{ status }}
+    </div>
+    <div style="font-size:16px;font-weight:500;color:var(--text);margin-bottom:8px">
+      {% if status == 404 %}Not found
+      {% elif status == 401 %}Unauthorized
+      {% elif status == 403 %}Forbidden
+      {% elif status == 429 %}Rate limited
+      {% elif status == 500 %}Internal server error
+      {% else %}Something went wrong{% endif %}
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6">
+      {{ message }}
+    </div>
+    <div style="display:flex;gap:10px">
+      <a href="/" class="btn btn-ghost btn-sm"><- Home</a>
+      <button onclick="history.back()" class="btn btn-ghost btn-sm">Go back</button>
+    </div>
+    <div style="margin-top:20px;font-family:var(--mono);font-size:10px;color:var(--dim)">
+      No stack traces exposed to clients.
+    </div>
   </div>
+</div>
 {% endblock %}

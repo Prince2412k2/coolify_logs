@@ -1,142 +1,443 @@
 {% extends "base.html" %}
-{% block title %}Log Viewer{% endblock %}
+{% block title %}logstream — container logs{% endblock %}
+
+{% block head %}
+<style>
+  .hero {
+    padding: 48px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 10px;
+  }
+  .hero-title {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+  .hero-sub {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* Auth panel */
+  .auth-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 28px;
+  }
+  .auth-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .auth-row .field { flex: 1; }
+  .key-input-wrap {
+    position: relative;
+  }
+  .key-input-wrap .input {
+    padding-right: 42px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .key-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.12s;
+  }
+  .key-toggle:hover { color: var(--text); }
+  .auth-status {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    min-height: 18px;
+  }
+
+  /* Project tree */
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .project-block { margin-bottom: 32px; }
+  .project-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .project-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: rgba(245,158,11,0.12);
+    border: 1px solid rgba(245,158,11,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--amber);
+    font-weight: 700;
+    font-family: var(--mono);
+    flex-shrink: 0;
+  }
+  .project-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.01em;
+  }
+  .project-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--border);
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+
+  /* Stage */
+  .stage-block {
+    margin-left: 14px;
+    padding-left: 20px;
+    border-left: 1px solid var(--border);
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .stage-block::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 12px;
+    width: 12px;
+    height: 1px;
+    background: var(--border);
+  }
+  .stage-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    margin-bottom: 10px;
+    font-family: var(--mono);
+  }
+
+  /* Container cards */
+  .container-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 8px;
+  }
+  .container-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.12s, background 0.12s;
+    cursor: pointer;
+  }
+  .container-card:hover {
+    border-color: var(--amber);
+    background: rgba(245,158,11,0.04);
+  }
+  .container-card:hover .card-arrow { color: var(--amber); opacity: 1; }
+  .card-info { min-width: 0; flex: 1; }
+  .card-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .card-arrow {
+    color: var(--dim);
+    opacity: 0.5;
+    flex-shrink: 0;
+    transition: color 0.12s, opacity 0.12s;
+    font-size: 14px;
+  }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
+  .empty-title { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+  .empty-sub { font-size: 12px; }
+
+  /* Loading skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 4px;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="grid gap-6">
-  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-    <div class="text-sm text-zinc-300">Paste your API key to list allowed containers and view live logs.</div>
-    <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
-      <label class="block flex-1">
-        <div class="text-xs font-medium text-zinc-400">API key</div>
-        <input id="apiKey" type="password" autocomplete="off"
-          class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600"
-          placeholder="Bearer token" />
-      </label>
-      <button id="loadBtn"
-        class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">
-        Load containers
-      </button>
-    </div>
-    <div id="status" class="mt-3 text-sm text-zinc-400"></div>
+<div class="page">
+  <div class="hero">
+    <div class="hero-eyebrow">Docker Log Gateway</div>
+    <h1 class="hero-title">Container Logs</h1>
+    <p class="hero-sub">Paste your API key to stream live logs from allowed containers.</p>
   </div>
 
-  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-    <div class="flex items-center justify-between">
-      <div>
-        <div class="text-sm font-semibold">Allowed running containers</div>
-        <div class="text-xs text-zinc-400">Click a container to open the viewer.</div>
-      </div>
+  <!-- Auth panel -->
+  <div class="auth-panel">
+    <div class="auth-row">
+      <label class="field">
+        <span class="field-label">API Key</span>
+        <div class="key-input-wrap">
+           <input id="apiKey" type="password" autocomplete="off" class="input"
+                 placeholder="Paste your Bearer token here" />
+          <button class="key-toggle" id="keyToggle" title="Show/hide key" type="button"
+                  onclick="toggleKeyVis()">
+            <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </label>
+      <button class="btn btn-primary" id="loadBtn" onclick="loadContainers()">Load</button>
     </div>
-    <div id="containerList" class="mt-4 grid gap-2"></div>
+    <div class="auth-status" id="authStatus"></div>
+  </div>
+
+  <!-- Containers -->
+  <div id="containersSection" style="display:none">
+    <div class="section-title" id="containersSectionTitle">Accessible Containers</div>
+    <div id="containersList"></div>
+  </div>
+
+  <div id="emptyState" style="display:none" class="empty">
+    <div class="empty-icon">[]</div>
+    <div class="empty-title">No containers found</div>
+    <div class="empty-sub">This API key has no allowed containers, or none are currently running.</div>
   </div>
 </div>
 
 <script>
-  const statusEl = document.getElementById('status');
-  const listEl = document.getElementById('containerList');
-  const keyEl = document.getElementById('apiKey');
-  const btn = document.getElementById('loadBtn');
+const keyEl   = document.getElementById('apiKey');
+const statusEl = document.getElementById('authStatus');
+const listEl   = document.getElementById('containersList');
+const sectionEl = document.getElementById('containersSection');
+const emptyEl  = document.getElementById('emptyState');
 
-  function setStatus(msg) {
-    statusEl.textContent = msg || '';
-  }
+let keyVisible = false;
 
-  function projectSection(p) {
-    const section = document.createElement('div');
-    section.className = 'mb-12 last:mb-0';
+function toggleKeyVis() {
+  keyVisible = !keyVisible;
+  keyEl.type = keyVisible ? 'text' : 'password';
+  document.getElementById('eyeIcon').innerHTML = keyVisible
+    ? '<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+    : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+}
 
-    const head = document.createElement('div');
-    head.className = 'flex items-center gap-3 mb-6';
-    head.innerHTML = `
-        <div class="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.7)]"></div>
-        <div class="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-100">${p.project_name}</div>
-      `;
-    section.appendChild(head);
+function setStatus(msg, ok) {
+  statusEl.textContent = msg || '';
+  statusEl.style.color = ok === true ? 'var(--green)' : ok === false ? 'var(--rose)' : 'var(--muted)';
+}
 
-    const ladder = document.createElement('div');
-    ladder.className = 'ml-1 space-y-10 border-l border-zinc-800/80 pl-8 relative';
+function makeContainerCard(name, type, id) {
+  const a = document.createElement('a');
+  a.href = `/logs/${encodeURIComponent(name)}`;
+  a.className = 'container-card';
+  a.innerHTML = `
+    <div class="card-info">
+      <div class="card-name">${escHtml(name)}</div>
+      <div class="card-meta">
+        <span class="badge badge-${type}">${escHtml(type)}</span>
+        <span>${escHtml(id)}</span>
+      </div>
+    </div>
+    <span class="card-arrow">-></span>
+  `;
+  return a;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderProjects(projects) {
+  listEl.innerHTML = '';
+  let totalContainers = 0;
+
+  for (const p of projects) {
+    const block = document.createElement('div');
+    block.className = 'project-block';
+
+    let countForProject = 0;
+    for (const s of p.stages) countForProject += s.services.length;
+    totalContainers += countForProject;
+
+    block.innerHTML = `
+      <div class="project-header">
+        <div class="project-icon">${escHtml(p.project_name[0].toUpperCase())}</div>
+        <div class="project-name">${escHtml(p.project_name)}</div>
+        <div class="project-count">${countForProject}</div>
+      </div>
+    `;
 
     for (const stage of p.stages) {
-      const stageDiv = document.createElement('div');
-      stageDiv.className = 'relative';
-      stageDiv.innerHTML = `
-          <!-- Stage Stem -->
-          <div class="absolute -left-[32px] top-3 h-[1px] w-8 bg-zinc-800/80"></div>
-          <div class="absolute -left-[32px] top-3 h-2 w-2 -translate-y-[3.5px] rounded-full bg-zinc-800"></div>
-
-          <div class="mb-4">
-            <span class="px-2 py-0.5 rounded-sm bg-zinc-900 border border-zinc-800 text-[10px] font-black text-zinc-500 uppercase tracking-widest">${stage.stage_name}</span>
-          </div>
-        `;
+      const stageBlock = document.createElement('div');
+      stageBlock.className = 'stage-block';
+      stageBlock.innerHTML = `<div class="stage-label">${escHtml(stage.stage_name)}</div>`;
 
       const grid = document.createElement('div');
-      grid.className = 'grid gap-3';
+      grid.className = 'container-grid';
 
       for (const s of stage.services) {
-        const a = document.createElement('a');
-        a.href = `/logs/${encodeURIComponent(s.container_name)}`;
-        a.className = 'group flex items-center justify-between rounded-xl border border-zinc-800/40 bg-zinc-950/20 px-5 py-4 transition-all hover:bg-zinc-900/10 hover:border-zinc-700/50';
-
-        a.innerHTML = `
-            <div class="min-w-0">
-              <div class="truncate font-mono text-sm font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors">${s.name}</div>
-              <div class="mt-2 flex items-center gap-3">
-                <span class="inline-flex items-center rounded-sm bg-zinc-900/80 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-zinc-500 border border-zinc-800/50 leading-none">${s.type}</span>
-                <span class="text-[10px] font-medium text-zinc-600 font-mono">${s.container_id}</span>
-              </div>
-            </div>
-            <div class="text-[10px] font-bold text-zinc-600 uppercase tracking-tight group-hover:text-zinc-300 transition-colors">View logs →</div>
-          `;
-        grid.appendChild(a);
+        grid.appendChild(makeContainerCard(
+          s.container_name !== 'Not Found' ? s.container_name : s.name,
+          s.type,
+          s.container_id !== 'Not Found' ? s.container_id : ''
+        ));
       }
 
-      stageDiv.appendChild(grid);
-      ladder.appendChild(stageDiv);
+      stageBlock.appendChild(grid);
+      block.appendChild(stageBlock);
     }
 
-    section.appendChild(ladder);
-    return section;
+    listEl.appendChild(block);
   }
 
-  async function loadContainers() {
-    const key = keyEl.value.trim();
-    if (!key) {
-      setStatus('API key required.');
+  return totalContainers;
+}
+
+function renderOthers(containers, shownNames) {
+  const others = containers.filter(c => !shownNames.has(c.name));
+  if (!others.length) return 0;
+
+  const block = document.createElement('div');
+  block.className = 'project-block';
+  block.innerHTML = `<div class="project-header">
+    <div class="project-icon" style="background:rgba(255,255,255,0.04);border-color:var(--border);color:var(--muted)">+</div>
+    <div class="project-name" style="color:var(--muted)">Other Containers</div>
+    <div class="project-count">${others.length}</div>
+  </div>`;
+
+  const grid = document.createElement('div');
+  grid.className = 'container-grid';
+  for (const c of others) {
+    grid.appendChild(makeContainerCard(c.name, 'service', c.id ? c.id.slice(0,12) : ''));
+  }
+  block.appendChild(grid);
+  listEl.appendChild(block);
+  return others.length;
+}
+
+async function loadContainers() {
+  const key = keyEl.value.trim();
+  if (!key) { setStatus('API key required.', false); return; }
+
+  setStatus('Authenticating...');
+  sectionEl.style.display = 'none';
+  emptyEl.style.display = 'none';
+
+  try {
+    const [rProjects, rContainers] = await Promise.all([
+      fetch('/api/projects', { headers: { Authorization: `Bearer ${key}` } }),
+      fetch('/api/containers', { headers: { Authorization: `Bearer ${key}` } })
+    ]);
+
+    if (!rContainers.ok) {
+      const d = await rContainers.json().catch(()=>({}));
+      setStatus(d.error || `Error ${rContainers.status}`, false);
       return;
     }
-    setStatus('Loading...');
+
+    const projects  = rProjects.ok ? (await rProjects.json()) : [];
+    const allConts  = await rContainers.json();
+
+    localStorage.setItem('lg_api_key', key);
+
+    const shownNames = new Set();
     listEl.innerHTML = '';
-    try {
-      const r = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${key}` }
-      });
-      if (!r.ok) {
-        const data = await r.json().catch(() => ({}));
-        setStatus(data.error || `Request failed (${r.status})`);
-        return;
-      }
-      const data = await r.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        setStatus('(no allowed running containers/projects)');
-        return;
-      }
 
-      let total = 0;
-      for (const p of data) {
-        for (const s of p.stages) total += s.services.length;
-        listEl.appendChild(projectSection(p));
-      }
-
-      setStatus(`${data.length} project(s), ${total} container(s)`);
-      localStorage.setItem('log_gateway_api_key', key);
-    } catch (e) {
-      setStatus('Failed to reach server.');
+    let total = renderProjects(projects);
+    for (const p of projects) for (const s of p.stages) for (const sv of s.services) {
+      shownNames.add(sv.container_name);
     }
+    total += renderOthers(allConts, shownNames);
+
+    if (total === 0) {
+      emptyEl.style.display = 'block';
+      setStatus('No accessible containers found.', false);
+    } else {
+      sectionEl.style.display = 'block';
+      setStatus(`${total} container${total !== 1 ? 's' : ''} accessible`, true);
+    }
+
+  } catch(e) {
+    setStatus('Failed to reach server.', false);
   }
+}
 
-  // Load last key (optional)
-  const prev = localStorage.getItem('log_gateway_api_key');
-  if (prev) keyEl.value = prev;
+// Restore key and auto-load
+const saved = localStorage.getItem('lg_api_key');
+if (saved) {
+  keyEl.value = saved;
+  setTimeout(loadContainers, 100);
+}
 
-  btn.addEventListener('click', loadContainers);
+keyEl.addEventListener('keydown', e => { if (e.key === 'Enter') loadContainers(); });
 </script>
 {% endblock %}

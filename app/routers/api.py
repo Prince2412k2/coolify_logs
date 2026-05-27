@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import asyncio
 from typing import Optional
 
 from docker.errors import APIError, NotFound
@@ -15,7 +16,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from .. import coolify_db
+from ..coolify_db import coolify_db
 from .. import docker_client
 from .. import rate_limit
 from ..auth import check_container_permission, get_api_key
@@ -56,11 +57,11 @@ def containers(
 def projects(
     api_key: ApiKey = Depends(get_api_key),
 ):
-    if not coolify_db.coolify_db.is_configured:
-        raise HTTPException(status_code=503, detail="Coolify DB not configured")
+    if not coolify_db.is_configured:
+        return []
 
     allowed = set(api_key.allowed_list())
-    results = coolify_db.coolify_db.get_detailed_projects()
+    results = coolify_db.get_detailed_projects()
 
     # Filter projects to only include allowed containers
     filtered_projects = []
@@ -116,7 +117,6 @@ async def logs_ping_ws(websocket: WebSocket, container_name: str):
 
 @router.websocket("/logs/{container_name}")
 async def logs_ws(websocket: WebSocket, container_name: str):
-    # Retrieve tail from query params manually
     tail_val = 100
     try:
         q_tail = websocket.query_params.get("tail")
@@ -132,14 +132,33 @@ async def logs_ws(websocket: WebSocket, container_name: str):
         await websocket.close(code=4400)
         return
 
-    # Check token from headers or query params
     token = _ws_bearer_from_headers(websocket)
     if not token:
         token = websocket.query_params.get("token")
 
+    await websocket.accept()
+
     if not token:
-        await websocket.close(code=4401)
+        try:
+            # If the client didn't provide Authorization/token in the handshake,
+            # expect an immediate first-message auth. Don't leave sockets hanging.
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=3.0)
+            msg = json.loads(raw)
+            if isinstance(msg, dict) and msg.get("type") == "auth":
+                token = str(msg.get("token") or "").strip() or None
+                if msg.get("tail") is not None:
+                    tail_val = int(msg.get("tail"))
+        except asyncio.TimeoutError:
+            token = None
+        except WebSocketDisconnect:
+            return
+        except Exception:
+            token = None
+
+    if not token:
+        await _ws_send_error(websocket, "Missing API key", code=4401)
         return
+
 
     SessionLocal = websocket.app.state.SessionLocal
     db = SessionLocal()
@@ -148,25 +167,22 @@ async def logs_ws(websocket: WebSocket, container_name: str):
         from ..models import ApiKey as ApiKeyModel
         api_key = db.get(ApiKeyModel, token)
         if not api_key:
-            await websocket.close(code=4401)
+            await _ws_send_error(websocket, "Invalid API key", code=4401)
             return
 
-        # Get actual container to resolve name/ID 
+        # Resolve provided identifier to an actual Docker container name.
         try:
             container_obj = docker_client._client().containers.get(container_name)
             actual_name = container_obj.name.lstrip("/")
         except Exception:
-            await websocket.close(code=4404)
+            await _ws_send_error(websocket, "Container not found", code=4404)
             return
 
         try:
             check_container_permission(api_key, actual_name)
         except Exception:
-            await websocket.close(code=4403)
+            await _ws_send_error(websocket, "API key not allowed for container", code=4403)
             return
-
-        # ACCEPT ONLY AFTER AUTH AND PERMISSION CHECKS
-        await websocket.accept()
 
         try:
             async for line in docker_client.stream_logs(actual_name, tail=tail_val):

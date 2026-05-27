@@ -132,6 +132,7 @@ def create_app() -> FastAPI:
                     {
                         "request": request,
                         "error": "Too many attempts, try again later.",
+                        "max_age": admin_router.ADMIN_SESSION_MAX_AGE_SECONDS,
                     },
                     status_code=429,
                 )

@@ -1,22 +1,93 @@
 {% extends "base.html" %}
-{% block title %}Admin Login{% endblock %}
+{% block title %}Admin login — logstream{% endblock %}
+
+{% block head %}
+<style>
+  .login-wrap {
+    min-height: calc(100vh - 44px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+  }
+  .login-header {
+    margin-bottom: 28px;
+  }
+  .login-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 8px;
+  }
+  .login-title {
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .login-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .login-submit {
+    margin-top: 4px;
+    width: 100%;
+    padding: 10px;
+    justify-content: center;
+    font-size: 13px;
+  }
+  .session-note {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--dim);
+    font-family: var(--mono);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-  <div class="mx-auto max-w-md rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-    <div class="text-sm font-semibold">Admin login</div>
-    <div class="mt-1 text-xs text-zinc-400">Session expires in ~8 hours.</div>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-eyebrow">Admin access</div>
+      <div class="login-title">Sign in</div>
+      <div class="login-sub">Session lasts 8 hours.</div>
+    </div>
+
     {% if error %}
-      <div class="mt-4 rounded-md border border-rose-900/50 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">{{ error }}</div>
+    <div class="alert alert-error" style="margin-bottom:18px">{{ error }}</div>
     {% endif %}
-    <form method="post" action="/admin/login" class="mt-5 grid gap-4">
-      <label>
-        <div class="text-xs font-medium text-zinc-400">Username</div>
-        <input name="username" class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" />
+
+    <form method="post" action="/admin/login" class="login-form">
+      <label class="field">
+        <span class="field-label">Username</span>
+        <input name="username" type="text" autocomplete="username" class="input" autofocus />
       </label>
-      <label>
-        <div class="text-xs font-medium text-zinc-400">Password</div>
-        <input type="password" name="password" class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" />
+      <label class="field">
+        <span class="field-label">Password</span>
+        <input name="password" type="password" autocomplete="current-password" class="input" />
       </label>
-      <button class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">Sign in</button>
+      <button class="btn btn-primary login-submit" type="submit">Sign in -></button>
     </form>
+
+    <div class="session-note">{{ max_age // 3600 }}h session · httpOnly cookie</div>
   </div>
+</div>
 {% endblock %}

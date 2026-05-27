@@ -1,6 +1,6 @@
 """Compatibility wrapper for running without installation."""
 
-from loggateway_cli.main import main
+from logify_cli.main import main
 
 
 if __name__ == "__main__":

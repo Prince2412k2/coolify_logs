@@ -1,40 +1,317 @@
 {% extends "base.html" %}
-{% block title %}Admin API Keys{% endblock %}
+{% block title %}API Keys — logstream admin{% endblock %}
+
+{% block nav_links %}
+<a href="/admin" class="nav-link"><- Dashboard</a>
+<form method="post" action="/admin/logout" style="margin:0">
+  <button class="nav-link" style="background:none;border:none;cursor:pointer;font-family:inherit">Logout</button>
+</form>
+{% endblock %}
+
+{% block head %}
+<style>
+  .keys-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding-top: 28px;
+    flex-wrap: wrap;
+  }
+  .keys-title { font-size: 18px; font-weight: 400; letter-spacing: -0.01em; }
+  .keys-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* Two-column layout */
+  .keys-layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 800px) {
+    .keys-layout { grid-template-columns: 1fr; }
+  }
+
+  /* Create panel */
+  .create-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    position: sticky;
+    top: 64px;
+  }
+  .create-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .create-form { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Container checkboxes in create form */
+  .container-select { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+  .container-select-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .container-select-item:hover { border-color: var(--border-hi); background: rgba(255,255,255,0.02); }
+  .container-select-item:has(input:checked) { border-color: var(--amber-dim); background: rgba(245,158,11,0.04); }
+  .container-select-item input { margin: 0; }
+  .csi-name { font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .csi-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* Keys list */
+  .keys-list { display: flex; flex-direction: column; gap: 12px; }
+  .key-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .key-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .key-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .key-created { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .key-token-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid var(--border);
+  }
+  .key-token {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.04em;
+  }
+  .key-token.revealed { color: var(--text); }
+  .copy-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-hi);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.12s;
+    flex-shrink: 0;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--muted); background: rgba(255,255,255,0.04); }
+  .copy-btn.copied { color: var(--green); border-color: #14532d; }
+  .reveal-btn {
+    display: flex;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    transition: all 0.12s;
+    flex-shrink: 0;
+  }
+  .reveal-btn:hover { color: var(--muted); border-color: var(--border-hi); }
+
+  /* Permissions section */
+  .key-perms {
+    padding: 14px 18px;
+  }
+  .perms-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .perms-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* Project group in perms */
+  .perm-project { margin-bottom: 16px; }
+  .perm-project-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .perm-project-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .perm-project-name::before { content: '.'; font-size: 7px; color: var(--amber); }
+  .select-all-btn {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--dim);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: color 0.1s;
+  }
+  .select-all-btn:hover { color: var(--muted); }
+
+  .perm-stage { margin-left: 14px; border-left: 1px solid var(--border); padding-left: 16px; margin-bottom: 10px; }
+  .perm-stage-name {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    margin-bottom: 6px;
+  }
+  .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 5px; }
+  .perm-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .perm-item:hover { border-color: var(--border-hi); }
+  .perm-item:has(input:checked) { border-color: var(--amber-dim); background: rgba(245,158,11,0.04); }
+  .perm-item input { margin: 0; flex-shrink: 0; }
+  .perm-item-info { min-width: 0; }
+  .perm-item-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .perm-item-meta {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--dim);
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .perm-others-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+
+  .save-perms-row {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .no-keys {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+    font-size: 12px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-  <div class="flex items-center justify-between">
+<div class="page-wide">
+  <div class="keys-header">
     <div>
-      <div class="text-sm font-semibold">API keys</div>
-      <div class="text-xs text-zinc-400">Create keys and assign container access.</div>
+      <div class="keys-title">API Keys</div>
+      <div class="keys-sub">Create keys and assign container access permissions.</div>
     </div>
-    <a href="/admin" class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm hover:border-zinc-700">Back</a>
   </div>
 
-  <div class="mt-6 grid gap-6">
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-      <div class="text-sm font-semibold">Create API key</div>
-      <form class="mt-4 grid gap-4" hx-post="/admin/keys/create" hx-target="#keysPartial" hx-swap="outerHTML">
-        <label>
-          <div class="text-xs font-medium text-zinc-400">Name</div>
-          <input name="name" class="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" placeholder="Team / user" />
+  <div class="keys-layout">
+    <div class="create-panel">
+      <div class="create-title">Create new key</div>
+      <form class="create-form" hx-post="/admin/keys/create" hx-target="#keysPartial" hx-swap="outerHTML">
+        <label class="field">
+          <span class="field-label">Name</span>
+          <input name="name" type="text" class="input" placeholder="e.g. Team Alpha, Deploy Bot" />
         </label>
+
         <div>
-          <div class="text-xs font-medium text-zinc-400">Allowed containers</div>
-          <div class="mt-2 grid gap-2 md:grid-cols-2">
-            {% for n in running_names %}
-              <label class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm">
-                <input type="checkbox" name="allowed_containers" value="{{ n }}" class="accent-emerald-500" />
-                <span class="font-mono text-xs">{{ n }}</span>
-              </label>
+          <span class="field-label">Allowed containers</span>
+          <div class="container-select" style="margin-top:6px">
+            {% for project in projects %}
+              {% for stage in project.stages %}
+                {% for s in stage.services %}
+                  {% if s.container_name != 'Not Found' %}
+                  <label class="container-select-item">
+                    <input type="checkbox" name="allowed_containers" value="{{ s.container_name }}" />
+                    <div>
+                      <div class="csi-name">{{ s.name }}</div>
+                      <div class="csi-meta">{{ s.type }} · {{ project.project_name }}</div>
+                    </div>
+                  </label>
+                  {% endif %}
+                {% endfor %}
+              {% endfor %}
             {% endfor %}
-            {% if running_names|length == 0 %}
-              <div class="text-sm text-zinc-400">(no running containers found)</div>
+            {% for c in others %}
+            <label class="container-select-item">
+              <input type="checkbox" name="allowed_containers" value="{{ c.name }}" />
+              <div>
+                <div class="csi-name">{{ c.name }}</div>
+                <div class="csi-meta">{{ c.image }}</div>
+              </div>
+            </label>
+            {% endfor %}
+            {% if projects|length == 0 and others|length == 0 %}
+            <div style="font-size:12px;color:var(--muted);padding:12px 0">No running containers found.</div>
             {% endif %}
           </div>
         </div>
-        <button class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">Create</button>
+
+        <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center">Generate key</button>
       </form>
     </div>
 
-    {% include "admin_keys_partial.html" %}
+    <div>
+      {% include "admin_keys_partial.html" %}
+    </div>
   </div>
+</div>
 {% endblock %}

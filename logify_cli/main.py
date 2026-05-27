@@ -227,11 +227,7 @@ def containers(
         console.print(f"[red]error:[/red] failed to call server: {e}")
         raise typer.Exit(1)
 
-    if r_projects.status_code != 200:
-        console.print(f"[red]error (projects):[/red] {r_projects.text}")
-        raise typer.Exit(1)
-
-    projects_data = r_projects.json()
+    projects_data = r_projects.json() if r_projects.status_code == 200 else []
     containers_data = r_containers.json() if r_containers.status_code == 200 else []
 
     if not projects_data and not containers_data:

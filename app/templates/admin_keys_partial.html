@@ -1,118 +1,161 @@
-<div id="keysPartial" class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-  <div class="text-sm font-semibold">Existing keys</div>
-  <div class="mt-4 grid gap-4">
-    {% if keys|length == 0 %}
-    <div class="text-sm text-zinc-400">(none)</div>
-    {% endif %}
-    {% for k in keys %}
-    <div class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
-      <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-        <div class="min-w-0">
-          <div class="text-sm font-semibold">{{ k.name }}</div>
-          <div class="mt-2 flex items-center gap-2">
-            <div class="break-all font-mono text-xs text-zinc-200">{{ k.key }}</div>
-            <button type="button"
-              onclick="navigator.clipboard.writeText('{{ k.key }}').then(() => this.textContent = 'Copied!').catch(() => this.textContent = 'Error')"
-              class="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200">Copy</button>
-          </div>
-          <div class="mt-2 text-xs text-zinc-500">Created {{ k.created_at }}</div>
-        </div>
-        <form hx-post="/admin/keys/{{ k.key }}/delete" hx-target="#keysPartial" hx-swap="outerHTML">
-          <button
-            class="rounded-md border border-rose-900/50 bg-rose-950/40 px-3 py-2 text-xs text-rose-200 hover:bg-rose-950/70">Delete</button>
-        </form>
+<div id="keysPartial" class="keys-list">
+  {% if keys|length == 0 %}
+  <div class="no-keys">
+    No API keys yet. Create one using the form.
+  </div>
+  {% endif %}
+
+  {% for k in keys %}
+  {% set allowed_list = k.allowed_list() %}
+  <div class="key-card" id="key-{{ loop.index }}">
+    <div class="key-card-header">
+      <div>
+        <div class="key-name">{{ k.name }}</div>
+        <div class="key-created">Created {{ k.created_at.strftime('%Y-%m-%d %H:%M') if k.created_at else '' }}</div>
+      </div>
+      <form hx-post="/admin/keys/{{ k.key }}/delete"
+            hx-target="#keysPartial"
+            hx-swap="outerHTML"
+            hx-confirm="Delete key '{{ k.name }}'? This cannot be undone."
+            style="margin:0">
+        <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+      </form>
+    </div>
+
+    <div class="key-token-row">
+      <span class="key-token" id="token-{{ loop.index }}">{{ '•' * 32 }}</span>
+      <button class="reveal-btn" type="button" onclick="revealToken({{ loop.index }}, '{{ k.key }}')" id="revbtn-{{ loop.index }}" title="Show/hide key">Show</button>
+      <button class="copy-btn" type="button" onclick="copyKey(this, '{{ k.key }}')" title="Copy API key">Copy key</button>
+    </div>
+
+    <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      {% if allowed_list|length > 0 %}
+        <span style="font-size:11px;color:var(--muted)">Access:</span>
+        {% for name in allowed_list[:4] %}
+        <span style="font-family:var(--mono);font-size:10px;background:rgba(245,158,11,0.08);border:1px solid var(--amber-dim);color:var(--amber);padding:2px 7px;border-radius:3px">{{ name }}</span>
+        {% endfor %}
+        {% if allowed_list|length > 4 %}
+        <span style="font-size:10px;color:var(--muted)">+{{ allowed_list|length - 4 }} more</span>
+        {% endif %}
+      {% else %}
+        <span style="font-size:11px;color:var(--rose)">! No containers assigned</span>
+      {% endif %}
+    </div>
+
+    <div class="key-perms">
+      <div class="perms-header">
+        <div class="perms-title">Container access</div>
       </div>
 
-      <form class="mt-4" hx-post="/admin/keys/{{ k.key }}/update" hx-target="#keysPartial" hx-swap="outerHTML">
-        <div class="text-xs font-medium text-zinc-400">Allowed containers</div>
-        <div class="mt-2">
-          {% set allowed_list = k.allowed_list() %}
+      <form hx-post="/admin/keys/{{ k.key }}/update"
+            hx-target="#keysPartial"
+            hx-swap="outerHTML"
+            class="perm-project">
 
-          {% for project in projects %}
-          <div class="project-group mb-8 last:mb-0">
-            <div class="flex items-center justify-between mb-3">
-              <div class="flex items-center gap-2">
-                <div class="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
-                <div class="text-[10px] font-black uppercase tracking-widest text-zinc-400">{{ project.project_name }}
-                </div>
-              </div>
-              <label
-                class="flex items-center gap-1.5 cursor-pointer hover:bg-zinc-800/50 px-1.5 py-0.5 rounded transition">
-                <input type="checkbox" class="accent-emerald-600 h-3 w-3 rounded border-zinc-700 bg-zinc-900"
-                  onchange="this.closest('.project-group').querySelectorAll('input[name=allowed_containers]').forEach(cb => cb.checked = this.checked)">
-                <span class="text-[9px] font-bold uppercase text-zinc-500 tracking-tight">Select Project</span>
-              </label>
-            </div>
+        {% for project in projects %}
+        <div class="perm-project" data-project="{{ loop.index }}">
+          <div class="perm-project-header">
+            <div class="perm-project-name">{{ project.project_name }}</div>
+            <button type="button" class="select-all-btn"
+              onclick="selectAllInProject(this, {{ loop.index }})"
+              data-project="{{ loop.index }}"
+              data-all="false">Select all</button>
+          </div>
 
-            <div class="ml-1 space-y-6 border-l border-zinc-800/50 pl-6">
-              {% for stage in project.stages %}
-              <div class="stage-group">
-                <div class="flex items-center justify-between mb-3 -ml-[calc(24px+2px)]">
-                  <div class="flex items-center gap-2">
-                    <div class="h-[1px] w-4 bg-zinc-800"></div>
-                    <div
-                      class="px-2 py-0.5 rounded bg-zinc-800/40 border border-zinc-800 text-[9px] font-black text-zinc-500 uppercase tracking-wider">
-                      {{ stage.stage_name }}</div>
+          {% for stage in project.stages %}
+          <div class="perm-stage">
+            <div class="perm-stage-name">{{ stage.stage_name }}</div>
+            <div class="perm-grid">
+              {% for s in stage.services %}
+              {% if s.container_name != 'Not Found' %}
+              {% set is_checked = s.container_name in allowed_list %}
+              <label class="perm-item">
+                <input type="checkbox"
+                       name="allowed_containers"
+                       value="{{ s.container_name }}"
+                       {% if is_checked %}checked{% endif %}
+                       data-proj="{{ project.project_name }}" />
+                <div class="perm-item-info">
+                  <div class="perm-item-name" title="{{ s.container_name }}">{{ s.name }}</div>
+                  <div class="perm-item-meta">
+                    <span class="badge badge-{{ s.type }}">{{ s.type }}</span>
+                    {% if s.container_id != 'Not Found' %}<span>{{ s.container_id }}</span>{% endif %}
                   </div>
-                  <label
-                    class="flex items-center gap-1.5 cursor-pointer hover:bg-zinc-800/50 px-1.5 py-0.5 rounded transition">
-                    <input type="checkbox" class="accent-emerald-600 h-3 w-3 rounded border-zinc-700 bg-zinc-900"
-                      onchange="this.closest('.stage-group').querySelectorAll('input[name=allowed_containers]').forEach(cb => cb.checked = this.checked)">
-                    <span class="text-[8px] font-bold uppercase text-zinc-500 tracking-tight">Select Stage</span>
-                  </label>
                 </div>
-
-                <div class="grid gap-2 md:grid-cols-2">
-                  {% for s in stage.services %}
-                  {% set checked = s.container_name in allowed_list %}
-                  <label
-                    class="flex items-center gap-3 rounded-lg border border-zinc-800/60 bg-zinc-950/40 px-4 py-3 text-sm transition-all hover:border-zinc-700 hover:bg-zinc-900/40 cursor-pointer group">
-                    <input type="checkbox" name="allowed_containers" value="{{ s.container_name }}"
-                      class="accent-emerald-500 h-4 w-4 rounded border-zinc-700 bg-zinc-900" {% if checked %}checked{%
-                      endif %} />
-                    <div class="min-w-0">
-                      <div
-                        class="truncate font-mono text-xs text-zinc-200 group-hover:text-emerald-400 transition-colors">
-                        {{ s.name }}</div>
-                      <div class="truncate text-[9px] font-bold uppercase text-zinc-600 mt-1 flex items-center gap-2">
-                        <span class="px-1 py-0.5 bg-zinc-900 border border-zinc-800 rounded-sm">{{ s.type }}</span>
-                        <span>{{ s.container_id }}</span>
-                      </div>
-                    </div>
-                  </label>
-                  {% endfor %}
-                </div>
-              </div>
+              </label>
+              {% endif %}
               {% endfor %}
             </div>
           </div>
           {% endfor %}
-
-          {% if others|length > 0 %}
-          <div class="mb-4">
-            <div class="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Other Containers</div>
-            <div class="grid gap-2 md:grid-cols-2">
-              {% for c in others %}
-              {% set checked = c.name in allowed_list %}
-              <label
-                class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm transition-colors hover:border-zinc-700 cursor-pointer">
-                <input type="checkbox" name="allowed_containers" value="{{ c.name }}" class="accent-emerald-500" {% if
-                  checked %}checked{% endif %} />
-                <span class="truncate font-mono text-xs">{{ c.name }}</span>
-              </label>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
-
-          {% if projects|length == 0 and others|length == 0 %}
-          <div class="text-xs text-zinc-500 italic">No running containers found.</div>
-          {% endif %}
         </div>
-        <button
-          class="mt-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 hover:border-zinc-700">Save</button>
+        {% endfor %}
+
+        {% if others|length > 0 %}
+        <div style="margin-top:12px">
+          <div class="perm-others-title">Other containers</div>
+          <div class="perm-grid">
+            {% for c in others %}
+            {% set is_checked = c.name in allowed_list %}
+            <label class="perm-item">
+              <input type="checkbox"
+                     name="allowed_containers"
+                     value="{{ c.name }}"
+                     {% if is_checked %}checked{% endif %} />
+              <div class="perm-item-info">
+                <div class="perm-item-name" title="{{ c.name }}">{{ c.name }}</div>
+                <div class="perm-item-meta">
+                  <span>{{ c.image }}</span>
+                </div>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if projects|length == 0 and others|length == 0 %}
+        <div style="font-size:12px;color:var(--muted);padding:8px 0">No running containers found.</div>
+        {% endif %}
+
+        <div class="save-perms-row" style="padding:12px 0 0;border-top:none">
+          <button class="btn btn-ghost btn-sm" type="submit">Save permissions</button>
+        </div>
       </form>
     </div>
-    {% endfor %}
   </div>
+  {% endfor %}
 </div>
+
+<script>
+const _tokenMap = {};
+
+function revealToken(idx, key) {
+  const el = document.getElementById('token-' + idx);
+  if (!el) return;
+  const shown = _tokenMap[idx];
+  _tokenMap[idx] = !shown;
+  el.textContent = _tokenMap[idx] ? key : '•'.repeat(32);
+  el.classList.toggle('revealed', !!_tokenMap[idx]);
+}
+
+function copyKey(btn, key) {
+  copyText(key, 'API key');
+  const orig = btn.textContent;
+  btn.textContent = 'Copied!';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+}
+
+function selectAllInProject(btn, projIdx) {
+  const all = btn.dataset.all === 'true';
+  const next = !all;
+  btn.dataset.all = next;
+  btn.textContent = next ? 'Deselect all' : 'Select all';
+
+  const card = btn.closest('.key-card');
+  if (!card) return;
+  const projName = btn.closest('.perm-project').querySelector('.perm-project-name').textContent.trim().replace(/^\.\s*/, '');
+  card.querySelectorAll(`input[data-proj="${projName}"]`).forEach(cb => { cb.checked = next; });
+}
+</script>
