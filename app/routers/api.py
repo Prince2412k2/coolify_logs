@@ -97,20 +97,57 @@ def _resolve_resource(resource_uuid: str):
     return None, None
 
 
+def _scope_check(resource_uuid: str, api_key: ApiKey):
+    """Return (container_name, type) if the caller may see this resource;
+    raise 404 otherwise (404 — not 403 — so existence doesn't leak)."""
+    container_name, resource_type = _resolve_resource(resource_uuid)
+    if not container_name or container_name not in set(api_key.allowed_list()):
+        raise HTTPException(status_code=404, detail="Not found")
+    return container_name, resource_type
+
+
 @router.get("/services/{resource_uuid}/deployments")
 def deployments(
     resource_uuid: str,
     api_key: ApiKey = Depends(get_api_key),
 ):
-    container_name, resource_type = _resolve_resource(resource_uuid)
-    if not container_name:
-        raise HTTPException(status_code=404, detail="Not found")
-    if container_name not in set(api_key.allowed_list()):
-        raise HTTPException(status_code=404, detail="Not found")
+    _, resource_type = _scope_check(resource_uuid, api_key)
     if resource_type != "application":
-        # Services don't have a build/deploy queue; return empty list cleanly.
         return []
     return coolify_db.get_deployments(resource_uuid)
+
+
+@router.get("/services/{resource_uuid}/build-log")
+def build_log(
+    resource_uuid: str,
+    api_key: ApiKey = Depends(get_api_key),
+):
+    _, resource_type = _scope_check(resource_uuid, api_key)
+    if resource_type != "application":
+        return {"lines": [], "status": "", "deployment_uuid": ""}
+    return coolify_db.get_build_log(resource_uuid)
+
+
+@router.get("/services/{resource_uuid}/config")
+def service_config(
+    resource_uuid: str,
+    api_key: ApiKey = Depends(get_api_key),
+):
+    _, resource_type = _scope_check(resource_uuid, api_key)
+    if resource_type == "application":
+        return coolify_db.get_application_config(resource_uuid)
+    if resource_type == "service":
+        return coolify_db.get_service_config(resource_uuid)
+    return {}
+
+
+@router.get("/services/{resource_uuid}/env")
+def env_vars(
+    resource_uuid: str,
+    api_key: ApiKey = Depends(get_api_key),
+):
+    _, resource_type = _scope_check(resource_uuid, api_key)
+    return coolify_db.get_environment_variables(resource_uuid, resource_type or "")
 
 
 async def _ws_send_error(ws: WebSocket, message: str, code: int = 4401) -> None:

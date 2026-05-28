@@ -569,4 +569,234 @@ class CoolifyDBManager:
         return out
 
 
+    def get_build_log(self, application_uuid: str) -> Dict:
+        """Return the build log for the latest deployment of an application.
+
+        Coolify stores build output in application_deployment_queues.logs as
+        either a JSON array of `{output, type, order, timestamp}` entries, or
+        plain text. We return the parsed text plus metadata about the deploy.
+        """
+        if not self._config or not application_uuid:
+            return {}
+        safe = "".join(c for c in application_uuid if c.isalnum() or c in "-_")
+        if safe != application_uuid:
+            return {}
+
+        # Newest deployment for this application. We use \\gset-free output so
+        # the logs column survives intact (it can contain newlines).
+        sql = f"""
+        SELECT
+            deployment_uuid,
+            status,
+            COALESCE(commit, ''),
+            COALESCE(REPLACE(commit_message, '|', ' '), ''),
+            EXTRACT(EPOCH FROM created_at)::bigint,
+            EXTRACT(EPOCH FROM COALESCE(finished_at, updated_at))::bigint,
+            COALESCE(logs, '')
+        FROM application_deployment_queues
+        WHERE application_id = '{safe}'
+        ORDER BY id DESC
+        LIMIT 1;
+        """.strip()
+
+        rows = self._psql_rows(sql)
+        if not rows:
+            return {}
+        # Logs may contain `|` itself, so use maxsplit on the first 6 cols and
+        # keep the rest as the logs blob.
+        parts = rows[0].split("|", 6)
+        if len(parts) != 7:
+            return {}
+        dep_uuid, status, commit, commit_msg, created, finished, raw_logs = parts
+        # Multi-row outputs join logs with newlines; rebuild.
+        if len(rows) > 1:
+            raw_logs = "|".join([raw_logs] + rows[1:])
+
+        try:
+            created_ts = int(created) if created else 0
+        except ValueError:
+            created_ts = 0
+        try:
+            finished_ts = int(finished) if finished else 0
+        except ValueError:
+            finished_ts = 0
+
+        import json as _json
+        text_lines: List[str] = []
+        try:
+            entries = _json.loads(raw_logs) if raw_logs else []
+            if isinstance(entries, list):
+                for e in entries:
+                    if isinstance(e, dict):
+                        out = str(e.get("output", "")).rstrip("\n")
+                        if out:
+                            text_lines.append(out)
+                    elif isinstance(e, str):
+                        text_lines.append(e)
+            else:
+                text_lines = raw_logs.splitlines()
+        except (ValueError, TypeError):
+            text_lines = raw_logs.splitlines()
+
+        return {
+            "deployment_uuid": dep_uuid,
+            "status": status,
+            "commit": commit[:7] if commit else "",
+            "commit_message": commit_msg.split("\n", 1)[0].strip(),
+            "created_at": created_ts,
+            "finished_at": finished_ts,
+            "lines": text_lines,
+        }
+
+    def get_application_config(self, application_uuid: str) -> Dict:
+        """Read non-sensitive config columns from applications for one UUID."""
+        if not self._config or not application_uuid:
+            return {}
+        safe = "".join(c for c in application_uuid if c.isalnum() or c in "-_")
+        if safe != application_uuid:
+            return {}
+        sql = f"""
+        SELECT
+            COALESCE(name, ''),
+            COALESCE(fqdn, ''),
+            COALESCE(git_repository, ''),
+            COALESCE(git_branch, ''),
+            COALESCE(git_commit_sha, ''),
+            COALESCE(build_pack, ''),
+            COALESCE(base_directory, ''),
+            COALESCE(install_command, ''),
+            COALESCE(build_command, ''),
+            COALESCE(start_command, ''),
+            COALESCE(ports_exposed, ''),
+            COALESCE(ports_mappings, ''),
+            COALESCE(dockerfile, ''),
+            COALESCE(docker_registry_image_name, ''),
+            COALESCE(docker_registry_image_tag, ''),
+            COALESCE(health_check_enabled::text, 'f'),
+            COALESCE(health_check_path, ''),
+            COALESCE(status, ''),
+            EXTRACT(EPOCH FROM COALESCE(updated_at, created_at))::bigint
+        FROM applications
+        WHERE uuid = '{safe}'
+        LIMIT 1;
+        """.strip()
+        rows = self._psql_rows(sql)
+        if not rows:
+            return {}
+        parts = rows[0].split("|")
+        if len(parts) != 19:
+            return {}
+        keys = [
+            "name", "fqdn", "git_repository", "git_branch", "git_commit",
+            "build_pack", "base_directory", "install_command", "build_command",
+            "start_command", "ports_exposed", "ports_mappings", "dockerfile",
+            "image_name", "image_tag", "health_check_enabled", "health_check_path",
+            "status", "updated_at",
+        ]
+        out: Dict = {}
+        for k, v in zip(keys, parts):
+            if k == "health_check_enabled":
+                out[k] = (v == "t")
+            elif k == "updated_at":
+                try:
+                    out[k] = int(v) if v else 0
+                except ValueError:
+                    out[k] = 0
+            else:
+                out[k] = v
+        out["kind"] = "application"
+        return out
+
+    def get_service_config(self, service_uuid: str) -> Dict:
+        if not self._config or not service_uuid:
+            return {}
+        safe = "".join(c for c in service_uuid if c.isalnum() or c in "-_")
+        if safe != service_uuid:
+            return {}
+        sql = f"""
+        SELECT
+            COALESCE(name, ''),
+            COALESCE(description, ''),
+            COALESCE(docker_compose_raw, ''),
+            COALESCE(status, ''),
+            EXTRACT(EPOCH FROM COALESCE(updated_at, created_at))::bigint
+        FROM services
+        WHERE uuid = '{safe}'
+        LIMIT 1;
+        """.strip()
+        rows = self._psql_rows(sql)
+        if not rows:
+            return {}
+        # Compose can contain |, so split with maxsplit and absorb the rest.
+        parts = rows[0].split("|", 4)
+        if len(parts) != 5:
+            return {}
+        if len(rows) > 1:
+            parts[2] = "|".join([parts[2]] + rows[1:])
+        try:
+            updated_at = int(parts[4]) if parts[4] else 0
+        except ValueError:
+            updated_at = 0
+        return {
+            "name": parts[0],
+            "description": parts[1],
+            "docker_compose_raw": parts[2],
+            "status": parts[3],
+            "updated_at": updated_at,
+            "kind": "service",
+        }
+
+    def get_environment_variables(self, resource_uuid: str, resource_type: str) -> List[Dict]:
+        """Return env-var metadata (keys only — values are not exposed)."""
+        if not self._config or not resource_uuid:
+            return []
+        safe = "".join(c for c in resource_uuid if c.isalnum() or c in "-_")
+        if safe != resource_uuid:
+            return []
+
+        # Coolify's environment_variables uses (resourceable_type, resourceable_id)
+        # with resourceable_id being the integer PK of the parent. So we need a
+        # join through applications/services on uuid.
+        if resource_type == "application":
+            join_table = "applications"
+            laravel_class = "App\\\\Models\\\\Application"
+        elif resource_type == "service":
+            join_table = "services"
+            laravel_class = "App\\\\Models\\\\Service"
+        else:
+            return []
+
+        sql = f"""
+        SELECT
+            ev.key,
+            COALESCE(ev.is_preview::text, 'f'),
+            COALESCE(ev.is_build_time::text, 'f'),
+            COALESCE(ev.is_literal::text, 'f'),
+            COALESCE(LENGTH(ev.value), 0)
+        FROM environment_variables ev
+        JOIN {join_table} r ON r.id = ev.resourceable_id
+        WHERE r.uuid = '{safe}'
+          AND ev.resourceable_type = '{laravel_class}'
+        ORDER BY ev.is_preview, ev.key;
+        """.strip()
+        out: List[Dict] = []
+        for row in self._psql_rows(sql):
+            parts = row.split("|")
+            if len(parts) != 5:
+                continue
+            key, is_preview, is_build, is_literal, value_len = parts
+            try:
+                vlen = int(value_len) if value_len else 0
+            except ValueError:
+                vlen = 0
+            out.append({
+                "key": key,
+                "is_preview": is_preview == "t",
+                "is_build_time": is_build == "t",
+                "is_literal": is_literal == "t",
+                "value_length": vlen,
+            })
+        return out
+
+
 coolify_db = CoolifyDBManager()
