@@ -480,4 +480,93 @@ class CoolifyDBManager:
             return []
 
 
+    def get_deployments(self, application_uuid: str, limit: int = 25) -> List[Dict]:
+        """Return the most-recent deployments for an application UUID.
+
+        Reads Coolify's application_deployment_queues table. Services don't
+        produce deployments in this table — callers should pass only
+        application UUIDs and expect an empty list otherwise.
+        """
+        if not self._config or not application_uuid:
+            return []
+        # UUID-only allowlist to keep SQL injection-proof without a real param binder.
+        safe = "".join(c for c in application_uuid if c.isalnum() or c in "-_")
+        if safe != application_uuid:
+            return []
+        try:
+            lim = max(1, min(int(limit), 100))
+        except (TypeError, ValueError):
+            lim = 25
+
+        sql = f"""
+        SELECT
+            deployment_uuid,
+            status,
+            COALESCE(commit, ''),
+            COALESCE(REPLACE(commit_message, '|', ' '), ''),
+            COALESCE(pull_request_id::text, ''),
+            COALESCE(force_rebuild::text, 'f'),
+            COALESCE(restart_only::text, 'f'),
+            COALESCE(rollback::text, 'f'),
+            COALESCE(is_webhook::text, 'f'),
+            COALESCE(is_api::text, 'f'),
+            EXTRACT(EPOCH FROM created_at)::bigint,
+            EXTRACT(EPOCH FROM COALESCE(finished_at, updated_at))::bigint
+        FROM application_deployment_queues
+        WHERE application_id = '{safe}'
+        ORDER BY id DESC
+        LIMIT {lim};
+        """.strip()
+
+        out: List[Dict] = []
+        for row in self._psql_rows(sql):
+            parts = row.split("|")
+            if len(parts) != 12:
+                continue
+            (dep_uuid, status, commit, commit_msg, pr_id, force, restart,
+             rollback, is_webhook, is_api, created, finished) = parts
+            try:
+                created_ts = int(created) if created else 0
+            except ValueError:
+                created_ts = 0
+            try:
+                finished_ts = int(finished) if finished else 0
+            except ValueError:
+                finished_ts = 0
+            duration = 0
+            terminal = status in ("finished", "failed", "cancelled-by-user")
+            if terminal and finished_ts > created_ts:
+                duration = finished_ts - created_ts
+            short = commit[:7] if commit else ""
+            # First line of commit message — UI uses short form.
+            short_msg = commit_msg.split("\n", 1)[0].strip()
+            # Derive trigger label from the flag columns.
+            if rollback == "t":
+                trigger = "rollback"
+            elif is_webhook == "t":
+                trigger = "webhook"
+            elif is_api == "t":
+                trigger = "api"
+            elif restart == "t":
+                trigger = "restart"
+            elif force == "t":
+                trigger = "manual (force)"
+            else:
+                trigger = "manual"
+            out.append({
+                "uuid": dep_uuid,
+                "status": status,
+                "commit": short,
+                "full_commit": commit,
+                "commit_message": short_msg,
+                "pr_id": pr_id if pr_id and pr_id != "0" else "",
+                "trigger": trigger,
+                "force_rebuild": force == "t",
+                "created_at": created_ts,
+                "finished_at": finished_ts,
+                "duration_seconds": duration,
+            })
+        return out
+
+
 coolify_db = CoolifyDBManager()

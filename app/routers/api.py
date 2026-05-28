@@ -85,6 +85,34 @@ def projects(
     return filtered_projects
 
 
+def _resolve_resource(resource_uuid: str):
+    """Return (container_name, resource_type) for a known UUID, or (None, None)."""
+    if not coolify_db.is_configured or not resource_uuid:
+        return None, None
+    for p in coolify_db.get_detailed_projects():
+        for stage in p.get("stages", []):
+            for s in stage.get("services", []):
+                if s.get("uuid") == resource_uuid:
+                    return s.get("container_name") or None, s.get("type") or "application"
+    return None, None
+
+
+@router.get("/services/{resource_uuid}/deployments")
+def deployments(
+    resource_uuid: str,
+    api_key: ApiKey = Depends(get_api_key),
+):
+    container_name, resource_type = _resolve_resource(resource_uuid)
+    if not container_name:
+        raise HTTPException(status_code=404, detail="Not found")
+    if container_name not in set(api_key.allowed_list()):
+        raise HTTPException(status_code=404, detail="Not found")
+    if resource_type != "application":
+        # Services don't have a build/deploy queue; return empty list cleanly.
+        return []
+    return coolify_db.get_deployments(resource_uuid)
+
+
 async def _ws_send_error(ws: WebSocket, message: str, code: int = 4401) -> None:
     try:
         await ws.send_text(json.dumps({"type": "error", "message": message}))
