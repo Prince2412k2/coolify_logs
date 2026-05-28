@@ -726,7 +726,7 @@ class CoolifyDBManager:
             COALESCE(install_command, ''),
             COALESCE(build_command, ''),
             COALESCE(start_command, ''),
-            COALESCE(ports_exposed, ''),
+            COALESCE(ports_exposes, ''),
             COALESCE(ports_mappings, ''),
             COALESCE(dockerfile, ''),
             COALESCE(docker_registry_image_name, ''),
@@ -816,12 +816,15 @@ class CoolifyDBManager:
         # Coolify's environment_variables uses (resourceable_type, resourceable_id)
         # with resourceable_id being the integer PK of the parent. So we need a
         # join through applications/services on uuid.
+        # NB: Coolify stores Laravel polymorphic names with single backslashes —
+        # the SQL literal needs ONE backslash per separator, which in a Python
+        # string is the two-char escape "\\".
         if resource_type == "application":
             join_table = "applications"
-            laravel_class = "App\\\\Models\\\\Application"
+            laravel_class = "App\\Models\\Application"
         elif resource_type == "service":
             join_table = "services"
-            laravel_class = "App\\\\Models\\\\Service"
+            laravel_class = "App\\Models\\Service"
         else:
             return []
 
