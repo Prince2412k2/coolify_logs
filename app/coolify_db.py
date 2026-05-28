@@ -404,6 +404,37 @@ class CoolifyDBManager:
         return None
 
 
+    def get_project_for_resource(self, resource_uuid: str) -> Optional[str]:
+        """Look up which Coolify project_id a resource (app or service) belongs to.
+
+        Returns the project_id as a string, or None if no match.
+        Reads through the live tree — cheap enough since get_detailed_projects
+        is already pulled by every UI render.
+        """
+        if not resource_uuid:
+            return None
+        for p in self.get_detailed_projects():
+            for stage in p.get("stages", []):
+                for s in stage.get("services", []):
+                    if s.get("uuid") == resource_uuid:
+                        return str(p.get("project_id"))
+        return None
+
+    def get_project_for_container(self, container_name: str) -> Optional[str]:
+        """Look up which project_id a Docker container belongs to.
+
+        Matches via container_name from get_detailed_projects().
+        Returns None if the container isn't associated with any known project.
+        """
+        if not container_name:
+            return None
+        for p in self.get_detailed_projects():
+            for stage in p.get("stages", []):
+                for s in stage.get("services", []):
+                    if s.get("container_name") == container_name:
+                        return str(p.get("project_id"))
+        return None
+
     def get_detailed_projects(self) -> List[Dict]:
         if not self._config:
             return []
@@ -453,12 +484,14 @@ class CoolifyDBManager:
                         "services": [],
                     }
 
-                container_id = "Not Found"
-                container_name = "Not Found"
+                container_id = ""
+                container_name = ""
+                reachable = False
                 for c_name, c_info in containers_map.items():
                     if uuid and uuid in c_name:
                         container_id = c_info["short_id"]
                         container_name = c_name
+                        reachable = True
                         break
 
                 projects_dict[pid_str]["stages"][env]["services"].append(
@@ -468,6 +501,7 @@ class CoolifyDBManager:
                         "uuid": uuid,
                         "container_id": container_id,
                         "container_name": container_name,
+                        "reachable": reachable,
                     }
                 )
 

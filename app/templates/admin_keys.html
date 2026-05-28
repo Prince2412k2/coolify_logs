@@ -2,7 +2,7 @@
 {% block title %}API Keys — logstream admin{% endblock %}
 
 {% block nav_links %}
-<a href="/admin" class="nav-link"><- Dashboard</a>
+<a href="/admin" class="nav-link">← Dashboard</a>
 <form method="post" action="/admin/logout" style="margin:0">
   <button class="nav-link" style="background:none;border:none;cursor:pointer;font-family:inherit">Logout</button>
 </form>
@@ -10,246 +10,139 @@
 
 {% block head %}
 <style>
+  /* ── page chrome ─────────────────────────────────────────── */
   .keys-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 28px;
-    padding-top: 28px;
-    flex-wrap: wrap;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; margin-bottom: 28px; padding-top: 28px; flex-wrap: wrap;
   }
   .keys-title { font-size: 18px; font-weight: 400; letter-spacing: -0.01em; }
   .keys-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
 
-  /* Two-column layout */
   .keys-layout {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 20px;
-    align-items: start;
+    display: grid; grid-template-columns: 380px 1fr;
+    gap: 20px; align-items: start;
   }
-  @media (max-width: 800px) {
-    .keys-layout { grid-template-columns: 1fr; }
-  }
+  @media (max-width: 880px) { .keys-layout { grid-template-columns: 1fr; } }
 
-  /* Create panel */
+  /* ── create panel (sidebar) ──────────────────────────────── */
   .create-panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    position: sticky;
-    top: 64px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px;
+    position: sticky; top: 64px;
   }
-  .create-title {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 16px;
-    color: var(--text);
-  }
+  .create-title { font-size: 13px; font-weight: 600; margin-bottom: 16px; }
   .create-form { display: flex; flex-direction: column; gap: 14px; }
 
-  /* Container checkboxes in create form */
-  .container-select { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
-  .container-select-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.1s;
+  /* ── project picker ──────────────────────────────────────── */
+  .proj-list {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 380px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px; background: rgba(0,0,0,0.2);
   }
-  .container-select-item:hover { border-color: var(--border-hi); background: rgba(255,255,255,0.02); }
-  .container-select-item:has(input:checked) { border-color: var(--amber-dim); background: rgba(245,158,11,0.04); }
-  .container-select-item input { margin: 0; }
-  .csi-name { font-family: var(--mono); font-size: 11px; color: var(--text); }
-  .csi-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .proj-row {
+    display: grid;
+    grid-template-columns: 18px 10px 1fr auto;
+    align-items: center; gap: 10px;
+    padding: 9px 12px; border: 1px solid transparent; border-radius: 5px;
+    cursor: pointer; transition: all 0.1s;
+  }
+  .proj-row:hover { background: rgba(255,255,255,0.03); border-color: var(--border-hi); }
+  .proj-row:has(input:checked) {
+    background: rgba(245,158,11,0.08);
+    border-color: var(--amber-dim);
+  }
+  .proj-row input[type=checkbox] { margin: 0; width: 14px; height: 14px; }
+  .proj-row .proj-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--dim);
+  }
+  .proj-row:has(input:checked) .proj-dot { background: var(--amber); box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+  .proj-row .proj-name {
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .proj-row:has(input:checked) .proj-name { color: var(--amber); font-weight: 600; }
+  .proj-row .proj-count {
+    font-family: var(--mono); font-size: 10px; color: var(--dim);
+  }
 
-  /* Keys list */
-  .keys-list { display: flex; flex-direction: column; gap: 12px; }
+  /* ── key cards ───────────────────────────────────────────── */
+  .keys-list { display: flex; flex-direction: column; gap: 14px; }
   .key-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
   }
   .key-card-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border);
   }
-  .key-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-  .key-created { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .key-name { font-size: 14px; font-weight: 600; }
+  .key-created { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 3px; }
+
   .key-token-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 18px;
-    background: rgba(0,0,0,0.3);
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 18px; background: rgba(0,0,0,0.3);
     border-bottom: 1px solid var(--border);
   }
   .key-token {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-family: var(--mono); font-size: 11px; color: var(--muted); flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     letter-spacing: 0.04em;
   }
   .key-token.revealed { color: var(--text); }
-  .copy-btn {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 4px;
-    border: 1px solid var(--border-hi);
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all 0.12s;
-    flex-shrink: 0;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
+  .copy-btn, .reveal-btn {
+    display: flex; align-items: center; font-family: var(--mono);
+    font-size: 10px; padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--border-hi); background: transparent;
+    color: var(--muted); cursor: pointer; transition: all 0.12s; flex-shrink: 0;
+    letter-spacing: 0.04em; white-space: nowrap; font-weight: 600;
   }
-  .copy-btn:hover { color: var(--text); border-color: var(--muted); background: rgba(255,255,255,0.04); }
+  .copy-btn:hover, .reveal-btn:hover { color: var(--text); border-color: var(--muted); background: rgba(255,255,255,0.04); }
   .copy-btn.copied { color: var(--green); border-color: #14532d; }
-  .reveal-btn {
-    display: flex;
-    align-items: center;
-    font-family: var(--mono);
-    font-size: 10px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--dim);
-    cursor: pointer;
-    transition: all 0.12s;
-    flex-shrink: 0;
-  }
-  .reveal-btn:hover { color: var(--muted); border-color: var(--border-hi); }
 
-  /* Permissions section */
-  .key-perms {
-    padding: 14px 18px;
-  }
+  /* ── permissions section ─────────────────────────────────── */
+  .key-perms { padding: 14px 18px; }
   .perms-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; min-height: 18px;
   }
-  .perms-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .perms-title {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .save-indicator {
+    font-family: var(--mono); font-size: 10px; color: var(--dim);
+    transition: opacity 0.3s, color 0.3s;
+    opacity: 0;
+  }
+  .save-indicator.saving { opacity: 1; color: var(--amber); }
+  .save-indicator.saved  { opacity: 1; color: var(--green); }
+  .save-indicator.error  { opacity: 1; color: var(--rose); }
 
-  /* Project group in perms */
-  .perm-project { margin-bottom: 16px; }
-  .perm-project-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
+  .access-summary {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 0 0 12px 0; border-bottom: 1px dashed var(--border); margin-bottom: 12px;
   }
-  .perm-project-name {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  .access-chip {
+    font-family: var(--mono); font-size: 10px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    padding: 2px 8px; border-radius: 3px;
   }
-  .perm-project-name::before { content: '.'; font-size: 7px; color: var(--amber); }
-  .select-all-btn {
-    font-size: 10px;
-    font-weight: 500;
-    color: var(--dim);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 3px;
-    transition: color 0.1s;
-  }
-  .select-all-btn:hover { color: var(--muted); }
-
-  .perm-stage { margin-left: 14px; border-left: 1px solid var(--border); padding-left: 16px; margin-bottom: 10px; }
-  .perm-stage-name {
-    font-family: var(--mono);
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--dim);
-    margin-bottom: 6px;
-  }
-  .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 5px; }
-  .perm-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 10px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.1s;
-  }
-  .perm-item:hover { border-color: var(--border-hi); }
-  .perm-item:has(input:checked) { border-color: var(--amber-dim); background: rgba(245,158,11,0.04); }
-  .perm-item input { margin: 0; flex-shrink: 0; }
-  .perm-item-info { min-width: 0; }
-  .perm-item-name {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .perm-item-meta {
-    font-family: var(--mono);
-    font-size: 9px;
-    color: var(--dim);
-    display: flex;
-    gap: 6px;
-    margin-top: 2px;
-  }
-
-  .perm-others-title {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--dim);
-    margin-bottom: 8px;
-  }
-
-  .save-perms-row {
-    padding: 12px 18px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
+  .access-warn {
+    font-size: 11px; color: var(--rose); font-weight: 600;
   }
 
   .no-keys {
-    text-align: center;
-    padding: 48px 20px;
-    color: var(--muted);
-    font-size: 12px;
-    border: 1px dashed var(--border);
-    border-radius: 10px;
+    text-align: center; padding: 48px 20px;
+    color: var(--muted); font-size: 12px;
+    border: 1px dashed var(--border); border-radius: 10px;
+  }
+  .form-error {
+    font-size: 11px; color: var(--rose); margin-top: 6px;
+    font-family: var(--mono);
   }
 </style>
 {% endblock %}
@@ -259,53 +152,46 @@
   <div class="keys-header">
     <div>
       <div class="keys-title">API Keys</div>
-      <div class="keys-sub">Create keys and assign container access permissions.</div>
+      <div class="keys-sub">Each key grants read access to one or more Coolify projects. Changes auto-save 1 s after the last click.</div>
     </div>
   </div>
 
   <div class="keys-layout">
     <div class="create-panel">
       <div class="create-title">Create new key</div>
-      <form class="create-form" hx-post="/admin/keys/create" hx-target="#keysPartial" hx-swap="outerHTML">
+      <form class="create-form"
+            hx-post="/admin/keys/create"
+            hx-target="#keysPartial"
+            hx-swap="outerHTML"
+            hx-on::after-request="if(event.detail.successful){this.reset(); this.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);}">
         <label class="field">
           <span class="field-label">Name</span>
-          <input name="name" type="text" class="input" placeholder="e.g. Team Alpha, Deploy Bot" />
+          <input name="name" type="text" class="input" required placeholder="e.g. Team Alpha, Deploy Bot" />
         </label>
 
         <div>
-          <span class="field-label">Allowed containers</span>
-          <div class="container-select" style="margin-top:6px">
+          <span class="field-label">Projects (at least one)</span>
+          <div class="proj-list" style="margin-top:6px">
             {% for project in projects %}
-              {% for stage in project.stages %}
-                {% for s in stage.services %}
-                  {% if s.container_name != 'Not Found' %}
-                  <label class="container-select-item">
-                    <input type="checkbox" name="allowed_containers" value="{{ s.container_name }}" />
-                    <div>
-                      <div class="csi-name">{{ s.name }}</div>
-                      <div class="csi-meta">{{ s.type }} · {{ project.project_name }}</div>
-                    </div>
-                  </label>
-                  {% endif %}
-                {% endfor %}
-              {% endfor %}
-            {% endfor %}
-            {% for c in others %}
-            <label class="container-select-item">
-              <input type="checkbox" name="allowed_containers" value="{{ c.name }}" />
-              <div>
-                <div class="csi-name">{{ c.name }}</div>
-                <div class="csi-meta">{{ c.image }}</div>
-              </div>
+            {% set svc_count = project.stages|map(attribute='services')|map('length')|sum %}
+            <label class="proj-row">
+              <input type="checkbox" name="allowed_projects" value="{{ project.project_id }}" />
+              <span class="proj-dot"></span>
+              <span class="proj-name" title="{{ project.project_name }}">{{ project.project_name }}</span>
+              <span class="proj-count">{{ svc_count }} svc{% if svc_count != 1 %}s{% endif %}</span>
             </label>
             {% endfor %}
-            {% if projects|length == 0 and others|length == 0 %}
-            <div style="font-size:12px;color:var(--muted);padding:12px 0">No running containers found.</div>
+            {% if projects|length == 0 %}
+            <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center">No Coolify projects detected.</div>
             {% endif %}
           </div>
+          <div class="form-error" id="createErr" style="display:none">Select at least one project</div>
         </div>
 
-        <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center">Generate key</button>
+        <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center"
+                onclick="return validateCreate(event)">
+          Generate key
+        </button>
       </form>
     </div>
 
@@ -314,4 +200,19 @@
     </div>
   </div>
 </div>
+
+<script>
+  function validateCreate(e) {
+    const form = e.target.closest('form');
+    const checked = form.querySelectorAll('input[name=allowed_projects]:checked').length;
+    const err = form.querySelector('#createErr');
+    if (checked === 0) {
+      err.style.display = 'block';
+      e.preventDefault();
+      return false;
+    }
+    err.style.display = 'none';
+    return true;
+  }
+</script>
 {% endblock %}

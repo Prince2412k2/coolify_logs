@@ -127,12 +127,20 @@ def get_api_key(
     return key
 
 
-def check_container_permission(api_key: ApiKey, container_name: str) -> None:
-    allowed = set(api_key.allowed_list())
-    if container_name not in allowed:
+def check_project_permission(api_key: ApiKey, project_id: Optional[str]) -> None:
+    """Raise 403 if the key isn't allowed to read this project.
+
+    Pass project_id as `None` for resources whose project couldn't be resolved —
+    those are always denied (no leakage of unknown resources).
+    """
+    if not project_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API key not allowed for container",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+        )
+    allowed = set(api_key.allowed_project_list())
+    if str(project_id) not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
         )
 
 

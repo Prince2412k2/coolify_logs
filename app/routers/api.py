@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from ..coolify_db import coolify_db
 from .. import docker_client
 from .. import rate_limit
-from ..auth import check_container_permission, get_api_key
+from ..auth import check_project_permission, get_api_key
 from ..database import get_db
 from ..models import ApiKey
 
@@ -41,16 +41,25 @@ def containers(
     api_key: ApiKey = Depends(get_api_key),
     db: Session = Depends(get_db),
 ):
-    # db is intentionally present to ensure a DB session exists per request.
     _ = db
     try:
         all_running = [c.as_dict() for c in docker_client.list_containers()]
     except docker_client.DockerUnavailable:
         raise HTTPException(status_code=503, detail="Docker socket unavailable")
 
-    allowed = set(api_key.allowed_list())
-    safe = [c for c in all_running if c.get("name") in allowed]
-    return safe
+    if not coolify_db.is_configured:
+        return []
+    allowed_projects = set(api_key.allowed_project_list())
+    # Build map: container_name -> project_id (one psql call)
+    by_container: dict[str, str] = {}
+    for p in coolify_db.get_detailed_projects():
+        pid = str(p.get("project_id", ""))
+        for stage in p.get("stages", []):
+            for s in stage.get("services", []):
+                cn = s.get("container_name")
+                if cn:
+                    by_container[cn] = pid
+    return [c for c in all_running if by_container.get(c.get("name", ""), "") in allowed_projects]
 
 
 @router.get("/projects")
@@ -59,51 +68,45 @@ def projects(
 ):
     if not coolify_db.is_configured:
         return []
-
-    allowed = set(api_key.allowed_list())
-    results = coolify_db.get_detailed_projects()
-
-    # Filter projects to only include allowed containers
-    filtered_projects = []
-    for p in results:
-        filtered_stages = []
-        for stage in p.get("stages", []):
-            filtered_services = [
-                s for s in stage.get("services", []) 
-                if s.get("container_name") in allowed
-            ]
-            if filtered_services:
-                stage_copy = stage.copy()
-                stage_copy["services"] = filtered_services
-                filtered_stages.append(stage_copy)
-        
-        if filtered_stages:
-            p_copy = p.copy()
-            p_copy["stages"] = filtered_stages
-            filtered_projects.append(p_copy)
-
-    return filtered_projects
+    allowed_projects = set(api_key.allowed_project_list())
+    out = []
+    for p in coolify_db.get_detailed_projects():
+        if str(p.get("project_id", "")) not in allowed_projects:
+            continue
+        out.append(p)
+    return out
 
 
 def _resolve_resource(resource_uuid: str):
-    """Return (container_name, resource_type) for a known UUID, or (None, None)."""
+    """(container_name, type, project_id) for a known UUID, or (None, None, None)."""
     if not coolify_db.is_configured or not resource_uuid:
-        return None, None
+        return None, None, None
     for p in coolify_db.get_detailed_projects():
+        pid = str(p.get("project_id", ""))
         for stage in p.get("stages", []):
             for s in stage.get("services", []):
                 if s.get("uuid") == resource_uuid:
-                    return s.get("container_name") or None, s.get("type") or "application"
-    return None, None
+                    return (
+                        s.get("container_name") or None,
+                        s.get("type") or "application",
+                        pid,
+                    )
+    return None, None, None
 
 
 def _scope_check(resource_uuid: str, api_key: ApiKey):
-    """Return (container_name, type) if the caller may see this resource;
-    raise 404 otherwise (404 — not 403 — so existence doesn't leak)."""
-    container_name, resource_type = _resolve_resource(resource_uuid)
-    if not container_name or container_name not in set(api_key.allowed_list()):
+    """Return (container_name, type, project_id) if the caller may see this
+    resource. 404 (not 403) on miss so existence doesn't leak.
+
+    Note: container_name may be None when Coolify lists the resource but the
+    gateway can't find a matching Docker container. The caller decides whether
+    that's actionable (e.g. /config still works; /logs doesn't).
+    """
+    container_name, resource_type, project_id = _resolve_resource(resource_uuid)
+    if project_id is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return container_name, resource_type
+    check_project_permission(api_key, project_id)
+    return container_name, resource_type, project_id
 
 
 @router.get("/services/{resource_uuid}/deployments")
@@ -111,7 +114,7 @@ def deployments(
     resource_uuid: str,
     api_key: ApiKey = Depends(get_api_key),
 ):
-    _, resource_type = _scope_check(resource_uuid, api_key)
+    _, resource_type, _ = _scope_check(resource_uuid, api_key)
     if resource_type != "application":
         return []
     return coolify_db.get_deployments(resource_uuid)
@@ -122,7 +125,7 @@ def build_log(
     resource_uuid: str,
     api_key: ApiKey = Depends(get_api_key),
 ):
-    _, resource_type = _scope_check(resource_uuid, api_key)
+    _, resource_type, _ = _scope_check(resource_uuid, api_key)
     if resource_type != "application":
         return {"lines": [], "status": "", "deployment_uuid": ""}
     return coolify_db.get_build_log(resource_uuid)
@@ -133,7 +136,7 @@ def service_config(
     resource_uuid: str,
     api_key: ApiKey = Depends(get_api_key),
 ):
-    _, resource_type = _scope_check(resource_uuid, api_key)
+    _, resource_type, _ = _scope_check(resource_uuid, api_key)
     if resource_type == "application":
         return coolify_db.get_application_config(resource_uuid)
     if resource_type == "service":
@@ -146,7 +149,7 @@ def env_vars(
     resource_uuid: str,
     api_key: ApiKey = Depends(get_api_key),
 ):
-    _, resource_type = _scope_check(resource_uuid, api_key)
+    _, resource_type, _ = _scope_check(resource_uuid, api_key)
     return coolify_db.get_environment_variables(resource_uuid, resource_type or "")
 
 
@@ -170,9 +173,6 @@ def _ws_bearer_from_headers(ws: WebSocket) -> Optional[str]:
     return token or None
 
 
-
-
-
 @router.websocket("/logs/{container_name}/ping")
 async def logs_ping_ws(websocket: WebSocket, container_name: str):
     await websocket.accept()
@@ -190,10 +190,9 @@ async def logs_ws(websocket: WebSocket, container_name: str):
     except (ValueError, TypeError):
         pass
 
-    # validate container
     try:
         _validate_container_name(container_name)
-    except HTTPException as e:
+    except HTTPException:
         await websocket.close(code=4400)
         return
 
@@ -205,8 +204,6 @@ async def logs_ws(websocket: WebSocket, container_name: str):
 
     if not token:
         try:
-            # If the client didn't provide Authorization/token in the handshake,
-            # expect an immediate first-message auth. Don't leave sockets hanging.
             raw = await asyncio.wait_for(websocket.receive_text(), timeout=3.0)
             msg = json.loads(raw)
             if isinstance(msg, dict) and msg.get("type") == "auth":
@@ -224,9 +221,7 @@ async def logs_ws(websocket: WebSocket, container_name: str):
         await _ws_send_error(websocket, "Missing API key", code=4401)
         return
 
-
-    # Authorise once up front, then release the DB connection. The WS can live
-    # for hours; holding a pool slot for that long exhausts the pool under load.
+    # Auth + permission snapshot up front; release DB connection before streaming.
     SessionLocal = websocket.app.state.SessionLocal
     db = SessionLocal()
     try:
@@ -235,21 +230,23 @@ async def logs_ws(websocket: WebSocket, container_name: str):
         if not api_key:
             await _ws_send_error(websocket, "Invalid API key", code=4401)
             return
-        # Snapshot the permission set so we don't need the ORM object after close.
-        allowed_set = set(api_key.allowed_list())
+        allowed_projects = set(api_key.allowed_project_list())
     finally:
         db.close()
 
-    # Resolve provided identifier to an actual Docker container name.
+    # Resolve Docker container by name (may not exist if user passed a stale uuid).
     try:
         container_obj = docker_client._client().containers.get(container_name)
         actual_name = container_obj.name.lstrip("/")
     except Exception:
-        await _ws_send_error(websocket, "Container not found", code=4404)
+        # The Docker host has no such container. Distinct close code from "not allowed".
+        await _ws_send_error(websocket, "Container not reachable on this gateway", code=4404)
         return
 
-    if actual_name not in allowed_set:
-        await _ws_send_error(websocket, "API key not allowed for container", code=4403)
+    # Resolve container -> project, then gate on project permission.
+    project_id = coolify_db.get_project_for_container(actual_name) if coolify_db.is_configured else None
+    if not project_id or project_id not in allowed_projects:
+        await _ws_send_error(websocket, "API key not allowed for project", code=4403)
         return
 
     try:

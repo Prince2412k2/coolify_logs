@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import List
 
-from docker.errors import NotFound
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -11,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from ..coolify_db import coolify_db
 from .. import docker_client
-from .. import rate_limit
 from ..auth import (
     ADMIN_SESSION_MAX_AGE_SECONDS,
     clear_admin_session,
@@ -28,6 +26,9 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 def _templates(request: Request) -> Jinja2Templates:
     return request.app.state.templates
+
+
+# ── login / logout ──────────────────────────────────────────────────────
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -60,7 +61,6 @@ def login_post(
             },
             status_code=401,
         )
-
     resp = RedirectResponse(url="/admin", status_code=303)
     set_admin_session(resp, username)
     return resp
@@ -74,33 +74,26 @@ def logout_post(request: Request):
     return resp
 
 
+# ── dashboard (existing — projects + others) ────────────────────────────
+
+
 @router.get("", response_class=HTMLResponse)
 def admin_index(request: Request, admin_user: str = Depends(require_admin)):
     try:
-        # Get all projects
         projects = coolify_db.get_detailed_projects()
-        
-        # Also get all containers to find ones not in projects
         all_containers = [c.as_dict() for c in docker_client.list_containers()]
-        
-        # Track which containers are in projects (by name and ID)
         in_projects = set()
         for p in projects:
             for stage in p.get("stages", []):
                 for s in stage.get("services", []):
-                    if s.get("container_name") and s.get("container_name") != "Not Found":
+                    if s.get("container_name"):
                         in_projects.add(s.get("container_name"))
-                    if s.get("container_id") and s.get("container_id") != "Not Found":
+                    if s.get("container_id"):
                         in_projects.add(s.get("container_id"))
-        
-        # Find "Other" containers
         others = [
-            c
-            for c in all_containers
-            if c.get("name") not in in_projects
-            and (c.get("id", "")[:12] not in in_projects)
+            c for c in all_containers
+            if c.get("name") not in in_projects and c.get("id", "")[:12] not in in_projects
         ]
-        
         docker_error = None
     except docker_client.DockerUnavailable:
         projects = []
@@ -109,7 +102,7 @@ def admin_index(request: Request, admin_user: str = Depends(require_admin)):
     except Exception as e:
         projects = []
         others = []
-        docker_error = f"Error: {str(e)}"
+        docker_error = f"Error: {e}"
 
     return _templates(request).TemplateResponse(
         "admin_index.html",
@@ -123,39 +116,25 @@ def admin_index(request: Request, admin_user: str = Depends(require_admin)):
     )
 
 
-def _render_keys_partial(request: Request, db: Session):
-    keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+# ── keys page ───────────────────────────────────────────────────────────
+
+
+def _project_context() -> dict:
+    """Build the shared template context for the keys page + partial."""
     try:
         projects = coolify_db.get_detailed_projects()
-        all_containers = [c.as_dict() for c in docker_client.list_containers()]
-        
-        in_projects = set()
-        for p in projects:
-            for stage in p.get("stages", []):
-                for s in stage.get("services", []):
-                    if s.get("container_name") and s.get("container_name") != "Not Found":
-                        in_projects.add(s.get("container_name"))
-                    if s.get("container_id") and s.get("container_id") != "Not Found":
-                        in_projects.add(s.get("container_id"))
-
-        others = [
-            c
-            for c in all_containers
-            if c.get("name") not in in_projects and c.get("id", "")[:12] not in in_projects
-        ]
-    except docker_client.DockerUnavailable:
+    except Exception:
         projects = []
-        others = []
-    
-    return _templates(request).TemplateResponse(
-        "admin_keys_partial.html",
-        {
-            "request": request,
-            "keys": keys,
-            "projects": projects,
-            "others": others,
-        },
-    )
+    return {
+        "projects": projects,
+        "projects_by_id": {str(p.get("project_id")): p for p in projects},
+    }
+
+
+def _render_keys_partial(request: Request, db: Session):
+    keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+    ctx = {"request": request, "keys": keys, **_project_context()}
+    return _templates(request).TemplateResponse("admin_keys_partial.html", ctx)
 
 
 @router.get("/keys", response_class=HTMLResponse)
@@ -166,55 +145,48 @@ def keys_get(
 ):
     _ = admin_user
     keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
-    try:
-        projects = coolify_db.get_detailed_projects()
-        all_containers = [c.as_dict() for c in docker_client.list_containers()]
-        
-        in_projects = set()
-        for p in projects:
-            for stage in p.get("stages", []):
-                for s in stage.get("services", []):
-                    if s.get("container_name") and s.get("container_name") != "Not Found":
-                        in_projects.add(s.get("container_name"))
-                    if s.get("container_id") and s.get("container_id") != "Not Found":
-                        in_projects.add(s.get("container_id"))
+    ctx = {"request": request, "keys": keys, **_project_context()}
+    return _templates(request).TemplateResponse("admin_keys.html", ctx)
 
-        others = [
-            c
-            for c in all_containers
-            if c.get("name") not in in_projects and c.get("id", "")[:12] not in in_projects
-        ]
-    except docker_client.DockerUnavailable:
-        projects = []
-        others = []
 
-    return _templates(request).TemplateResponse(
-        "admin_keys.html",
-        {
-            "request": request,
-            "keys": keys,
-            "projects": projects,
-            "others": others,
-        },
-    )
+def _normalize_project_ids(items: List[str]) -> List[str]:
+    """Strip blanks, dedupe, sort. Returns canonical list."""
+    seen = []
+    for x in items:
+        x = str(x).strip()
+        if x and x not in seen:
+            seen.append(x)
+    return sorted(seen)
+
+
+def _validate_project_ids(items: List[str]) -> tuple[List[str], str | None]:
+    """Validate that every id refers to a real project. Returns (clean, err)."""
+    ids = _normalize_project_ids(items)
+    if not ids:
+        return ids, "Keys must have at least one project assigned."
+    known = {str(p.get("project_id")) for p in coolify_db.get_detailed_projects()}
+    bogus = [x for x in ids if x not in known]
+    if bogus:
+        return ids, f"Unknown project id(s): {', '.join(bogus)}"
+    return ids, None
 
 
 @router.post("/keys/create", response_class=HTMLResponse)
 def keys_create(
     request: Request,
     name: str = Form(""),
-    allowed_containers: List[str] = Form(default=[]),
+    allowed_projects: List[str] = Form(default=[]),
     admin_user: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     _ = admin_user
     name = (name or "").strip() or "Unnamed"
-    k = generate_api_key()
-    row = ApiKey(
-        key=k,
-        name=name,
-        allowed_containers=json.dumps([str(x) for x in allowed_containers]),
-    )
+    clean, err = _validate_project_ids(allowed_projects)
+    if err:
+        # 422 + same partial — htmx won't swap on non-2xx by default, the JS
+        # form-side validator usually catches this first.
+        raise HTTPException(status_code=422, detail=err)
+    row = ApiKey(key=generate_api_key(), name=name, allowed_projects=json.dumps(clean))
     db.add(row)
     db.commit()
     return _render_keys_partial(request, db)
@@ -239,7 +211,7 @@ def keys_delete(
 def keys_update(
     request: Request,
     key: str,
-    allowed_containers: List[str] = Form(default=[]),
+    allowed_projects: List[str] = Form(default=[]),
     admin_user: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -247,6 +219,9 @@ def keys_update(
     row = db.get(ApiKey, key)
     if not row:
         raise HTTPException(status_code=404, detail="Key not found")
-    row.allowed_containers = json.dumps([str(x) for x in allowed_containers])
+    clean, err = _validate_project_ids(allowed_projects)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+    row.set_allowed_projects(clean)
     db.commit()
     return _render_keys_partial(request, db)

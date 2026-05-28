@@ -1,17 +1,18 @@
+{# Per-key card list. Project pickers auto-save on change with 1-second debounce. #}
 <div id="keysPartial" class="keys-list">
   {% if keys|length == 0 %}
-  <div class="no-keys">
-    No API keys yet. Create one using the form.
-  </div>
+  <div class="no-keys">No API keys yet. Create one using the form.</div>
   {% endif %}
 
   {% for k in keys %}
-  {% set allowed_list = k.allowed_list() %}
-  <div class="key-card" id="key-{{ loop.index }}">
+  {% set allowed = k.allowed_project_list() %}
+  {% set allowed_set = allowed|map('string')|list %}
+  {% set proj_lookup = projects_by_id %}
+  <div class="key-card" id="key-{{ k.key[:8] }}">
     <div class="key-card-header">
       <div>
         <div class="key-name">{{ k.name }}</div>
-        <div class="key-created">Created {{ k.created_at.strftime('%Y-%m-%d %H:%M') if k.created_at else '' }}</div>
+        <div class="key-created">created {{ k.created_at.strftime('%Y-%m-%d %H:%M') if k.created_at else '' }}</div>
       </div>
       <form hx-post="/admin/keys/{{ k.key }}/delete"
             hx-target="#keysPartial"
@@ -25,101 +26,55 @@
     <div class="key-token-row">
       <span class="key-token" id="token-{{ loop.index }}">{{ '•' * 32 }}</span>
       <button class="reveal-btn" type="button" onclick="revealToken({{ loop.index }}, '{{ k.key }}')" id="revbtn-{{ loop.index }}" title="Show/hide key">Show</button>
-      <button class="copy-btn" type="button" onclick="copyKey(this, '{{ k.key }}')" title="Copy API key">Copy key</button>
-    </div>
-
-    <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      {% if allowed_list|length > 0 %}
-        <span style="font-size:11px;color:var(--muted)">Access:</span>
-        {% for name in allowed_list[:4] %}
-        <span style="font-family:var(--mono);font-size:10px;background:rgba(245,158,11,0.08);border:1px solid var(--amber-dim);color:var(--amber);padding:2px 7px;border-radius:3px">{{ name }}</span>
-        {% endfor %}
-        {% if allowed_list|length > 4 %}
-        <span style="font-size:10px;color:var(--muted)">+{{ allowed_list|length - 4 }} more</span>
-        {% endif %}
-      {% else %}
-        <span style="font-size:11px;color:var(--rose)">! No containers assigned</span>
-      {% endif %}
+      <button class="copy-btn"   type="button" onclick="copyKey(this, '{{ k.key }}')" title="Copy API key">Copy key</button>
     </div>
 
     <div class="key-perms">
-      <div class="perms-header">
-        <div class="perms-title">Container access</div>
+      <div class="access-summary">
+        {% if allowed|length > 0 %}
+          <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em">access:</span>
+          {% for pid in allowed %}
+            {% set p = proj_lookup.get(pid|string) %}
+            {% if p %}<span class="access-chip">{{ p.project_name }}</span>{% endif %}
+          {% endfor %}
+        {% else %}
+          <span class="access-warn">⚠ no projects assigned — key is disabled</span>
+        {% endif %}
       </div>
 
-      <form hx-post="/admin/keys/{{ k.key }}/update"
+      <div class="perms-header">
+        <div class="perms-title">project access</div>
+        <span class="save-indicator" id="ind-{{ k.key[:8] }}"></span>
+      </div>
+
+      <form class="perm-form"
+            hx-post="/admin/keys/{{ k.key }}/update"
+            hx-trigger="change delay:1s from:closest form"
             hx-target="#keysPartial"
             hx-swap="outerHTML"
-            class="perm-project">
-
-        {% for project in projects %}
-        <div class="perm-project" data-project="{{ loop.index }}">
-          <div class="perm-project-header">
-            <div class="perm-project-name">{{ project.project_name }}</div>
-            <button type="button" class="select-all-btn"
-              onclick="selectAllInProject(this, {{ loop.index }})"
-              data-project="{{ loop.index }}"
-              data-all="false">Select all</button>
-          </div>
-
-          {% for stage in project.stages %}
-          <div class="perm-stage">
-            <div class="perm-stage-name">{{ stage.stage_name }}</div>
-            <div class="perm-grid">
-              {% for s in stage.services %}
-              {% if s.container_name != 'Not Found' %}
-              {% set is_checked = s.container_name in allowed_list %}
-              <label class="perm-item">
-                <input type="checkbox"
-                       name="allowed_containers"
-                       value="{{ s.container_name }}"
-                       {% if is_checked %}checked{% endif %}
-                       data-proj="{{ project.project_name }}" />
-                <div class="perm-item-info">
-                  <div class="perm-item-name" title="{{ s.container_name }}">{{ s.name }}</div>
-                  <div class="perm-item-meta">
-                    <span class="badge badge-{{ s.type }}">{{ s.type }}</span>
-                    {% if s.container_id != 'Not Found' %}<span>{{ s.container_id }}</span>{% endif %}
-                  </div>
-                </div>
-              </label>
-              {% endif %}
-              {% endfor %}
-            </div>
-          </div>
+            hx-indicator="#ind-{{ k.key[:8] }}"
+            data-key="{{ k.key[:8] }}"
+            onsubmit="return false"
+            hx-on::htmx:before-request="markSaving('{{ k.key[:8] }}')"
+            hx-on::htmx:after-request="markSaved('{{ k.key[:8] }}', event)">
+        <div class="proj-list">
+          {% for project in projects %}
+          {% set is_checked = (project.project_id|string) in allowed_set %}
+          {% set svc_count = project.stages|map(attribute='services')|map('length')|sum %}
+          <label class="proj-row">
+            <input type="checkbox"
+                   name="allowed_projects"
+                   value="{{ project.project_id }}"
+                   {% if is_checked %}checked{% endif %}
+                   onchange="warnIfEmpty(this)" />
+            <span class="proj-dot"></span>
+            <span class="proj-name" title="{{ project.project_name }}">{{ project.project_name }}</span>
+            <span class="proj-count">{{ svc_count }} svc{% if svc_count != 1 %}s{% endif %}</span>
+          </label>
           {% endfor %}
-        </div>
-        {% endfor %}
-
-        {% if others|length > 0 %}
-        <div style="margin-top:12px">
-          <div class="perm-others-title">Other containers</div>
-          <div class="perm-grid">
-            {% for c in others %}
-            {% set is_checked = c.name in allowed_list %}
-            <label class="perm-item">
-              <input type="checkbox"
-                     name="allowed_containers"
-                     value="{{ c.name }}"
-                     {% if is_checked %}checked{% endif %} />
-              <div class="perm-item-info">
-                <div class="perm-item-name" title="{{ c.name }}">{{ c.name }}</div>
-                <div class="perm-item-meta">
-                  <span>{{ c.image }}</span>
-                </div>
-              </div>
-            </label>
-            {% endfor %}
-          </div>
-        </div>
-        {% endif %}
-
-        {% if projects|length == 0 and others|length == 0 %}
-        <div style="font-size:12px;color:var(--muted);padding:8px 0">No running containers found.</div>
-        {% endif %}
-
-        <div class="save-perms-row" style="padding:12px 0 0;border-top:none">
-          <button class="btn btn-ghost btn-sm" type="submit">Save permissions</button>
+          {% if projects|length == 0 %}
+          <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center">No Coolify projects detected.</div>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -129,7 +84,6 @@
 
 <script>
 const _tokenMap = {};
-
 function revealToken(idx, key) {
   const el = document.getElementById('token-' + idx);
   if (!el) return;
@@ -138,7 +92,6 @@ function revealToken(idx, key) {
   el.textContent = _tokenMap[idx] ? key : '•'.repeat(32);
   el.classList.toggle('revealed', !!_tokenMap[idx]);
 }
-
 function copyKey(btn, key) {
   copyText(key, 'API key');
   const orig = btn.textContent;
@@ -146,16 +99,43 @@ function copyKey(btn, key) {
   btn.classList.add('copied');
   setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
 }
-
-function selectAllInProject(btn, projIdx) {
-  const all = btn.dataset.all === 'true';
-  const next = !all;
-  btn.dataset.all = next;
-  btn.textContent = next ? 'Deselect all' : 'Select all';
-
-  const card = btn.closest('.key-card');
-  if (!card) return;
-  const projName = btn.closest('.perm-project').querySelector('.perm-project-name').textContent.trim().replace(/^\.\s*/, '');
-  card.querySelectorAll(`input[data-proj="${projName}"]`).forEach(cb => { cb.checked = next; });
+function warnIfEmpty(cb) {
+  const form = cb.closest('form');
+  const any = form.querySelectorAll('input[name=allowed_projects]:checked').length;
+  if (any === 0) {
+    // Revert — server enforces it too, but we save the round-trip.
+    cb.checked = true;
+    const id = form.dataset.key;
+    const el = document.getElementById('ind-' + id);
+    if (el) {
+      el.classList.remove('saving','saved');
+      el.classList.add('error');
+      el.textContent = 'keys must have ≥1 project';
+      setTimeout(() => { el.classList.remove('error'); el.textContent = ''; }, 2500);
+    }
+    // Cancel the queued debounced save.
+    htmx.trigger(form, 'htmx:abort');
+  }
+}
+function markSaving(id) {
+  const el = document.getElementById('ind-' + id);
+  if (!el) return;
+  el.classList.remove('saved','error');
+  el.classList.add('saving');
+  el.textContent = 'saving…';
+}
+function markSaved(id, ev) {
+  const el = document.getElementById('ind-' + id);
+  if (!el) return;
+  el.classList.remove('saving');
+  if (ev && ev.detail && ev.detail.successful) {
+    el.classList.add('saved');
+    el.textContent = 'saved';
+    setTimeout(() => { el.classList.remove('saved'); el.textContent = ''; }, 1800);
+  } else {
+    el.classList.add('error');
+    el.textContent = 'save failed';
+    setTimeout(() => { el.classList.remove('error'); el.textContent = ''; }, 2500);
+  }
 }
 </script>
