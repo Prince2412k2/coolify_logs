@@ -36,7 +36,16 @@ def create_engine_and_sessionmaker(db_url: str = "", db_path: str = ""):
             pool_pre_ping=True,
         )
     else:
-        engine = create_engine(db_url, pool_pre_ping=True)
+        # Defaults (5+10) are too tight for a gateway with many concurrent WS
+        # viewers. Sessions are still expected to be short-lived (auth lookup
+        # only), but headroom protects against bursty connects.
+        engine = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            pool_size=20,
+            max_overflow=40,
+            pool_recycle=1800,
+        )
 
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     return engine, SessionLocal

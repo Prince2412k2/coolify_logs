@@ -160,42 +160,43 @@ async def logs_ws(websocket: WebSocket, container_name: str):
         return
 
 
+    # Authorise once up front, then release the DB connection. The WS can live
+    # for hours; holding a pool slot for that long exhausts the pool under load.
     SessionLocal = websocket.app.state.SessionLocal
     db = SessionLocal()
-
     try:
         from ..models import ApiKey as ApiKeyModel
         api_key = db.get(ApiKeyModel, token)
         if not api_key:
             await _ws_send_error(websocket, "Invalid API key", code=4401)
             return
-
-        # Resolve provided identifier to an actual Docker container name.
-        try:
-            container_obj = docker_client._client().containers.get(container_name)
-            actual_name = container_obj.name.lstrip("/")
-        except Exception:
-            await _ws_send_error(websocket, "Container not found", code=4404)
-            return
-
-        try:
-            check_container_permission(api_key, actual_name)
-        except Exception:
-            await _ws_send_error(websocket, "API key not allowed for container", code=4403)
-            return
-
-        try:
-            async for line in docker_client.stream_logs(actual_name, tail=tail_val):
-                await websocket.send_text(json.dumps({"type": "log", "line": line}))
-        except NotFound:
-            await websocket.close(code=4404)
-        except docker_client.DockerUnavailable:
-            await websocket.close(code=1011)
-        except APIError:
-            await websocket.close(code=1011)
-        except WebSocketDisconnect:
-            pass
-        except Exception:
-            await websocket.close(code=1011)
+        # Snapshot the permission set so we don't need the ORM object after close.
+        allowed_set = set(api_key.allowed_list())
     finally:
         db.close()
+
+    # Resolve provided identifier to an actual Docker container name.
+    try:
+        container_obj = docker_client._client().containers.get(container_name)
+        actual_name = container_obj.name.lstrip("/")
+    except Exception:
+        await _ws_send_error(websocket, "Container not found", code=4404)
+        return
+
+    if actual_name not in allowed_set:
+        await _ws_send_error(websocket, "API key not allowed for container", code=4403)
+        return
+
+    try:
+        async for line in docker_client.stream_logs(actual_name, tail=tail_val):
+            await websocket.send_text(json.dumps({"type": "log", "line": line}))
+    except NotFound:
+        await websocket.close(code=4404)
+    except docker_client.DockerUnavailable:
+        await websocket.close(code=1011)
+    except APIError:
+        await websocket.close(code=1011)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        await websocket.close(code=1011)
