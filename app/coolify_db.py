@@ -661,20 +661,41 @@ class CoolifyDBManager:
 
         import json as _json
         text_lines: List[str] = []
+
+        def _push(s: str, prefix: str = "") -> None:
+            # Each emitted line must be single-row — split on embedded newlines
+            # so multi-line Dockerfile/script content doesn't break TUI layout.
+            s = s.replace("\r", "")
+            for sub in s.split("\n"):
+                sub = sub.rstrip()
+                if prefix and sub:
+                    text_lines.append(prefix + sub)
+                else:
+                    text_lines.append(sub)
+
         try:
             entries = _json.loads(raw_logs) if raw_logs else []
             if isinstance(entries, list):
                 for e in entries:
                     if isinstance(e, dict):
-                        out = str(e.get("output", "")).rstrip("\n")
-                        if out:
-                            text_lines.append(out)
+                        cmd = e.get("command")
+                        if cmd:
+                            _push(str(cmd), prefix="$ ")
+                        out = e.get("output", "")
+                        if not out:
+                            continue
+                        # Mark stderr lines so callers can render them
+                        # distinctly. stdout entries get no prefix.
+                        if str(e.get("type", "")) == "stderr":
+                            _push(str(out), prefix="[stderr] ")
+                        else:
+                            _push(str(out))
                     elif isinstance(e, str):
-                        text_lines.append(e)
+                        _push(e)
             else:
-                text_lines = raw_logs.splitlines()
+                _push(raw_logs)
         except (ValueError, TypeError):
-            text_lines = raw_logs.splitlines()
+            _push(raw_logs)
 
         return {
             "deployment_uuid": dep_uuid,
