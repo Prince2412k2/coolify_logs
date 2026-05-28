@@ -498,23 +498,26 @@ class CoolifyDBManager:
         except (TypeError, ValueError):
             lim = 25
 
+        # application_id is the integer id of applications stored as varchar.
+        # Resolve UUID → id::text once and feed it in.
         sql = f"""
         SELECT
-            deployment_uuid,
-            status,
-            COALESCE(commit, ''),
-            COALESCE(REPLACE(commit_message, '|', ' '), ''),
-            COALESCE(pull_request_id::text, ''),
-            COALESCE(force_rebuild::text, 'f'),
-            COALESCE(restart_only::text, 'f'),
-            COALESCE(rollback::text, 'f'),
-            COALESCE(is_webhook::text, 'f'),
-            COALESCE(is_api::text, 'f'),
-            EXTRACT(EPOCH FROM created_at)::bigint,
-            EXTRACT(EPOCH FROM COALESCE(finished_at, updated_at))::bigint
-        FROM application_deployment_queues
-        WHERE application_id = '{safe}'
-        ORDER BY id DESC
+            d.deployment_uuid,
+            d.status,
+            COALESCE(d.commit, ''),
+            COALESCE(REPLACE(d.commit_message, '|', ' '), ''),
+            COALESCE(d.pull_request_id::text, ''),
+            COALESCE(d.force_rebuild::text, 'f'),
+            COALESCE(d.restart_only::text, 'f'),
+            COALESCE(d.rollback::text, 'f'),
+            COALESCE(d.is_webhook::text, 'f'),
+            COALESCE(d.is_api::text, 'f'),
+            EXTRACT(EPOCH FROM d.created_at)::bigint,
+            EXTRACT(EPOCH FROM COALESCE(d.finished_at, d.updated_at))::bigint
+        FROM application_deployment_queues d
+        JOIN applications a ON a.id::text = d.application_id
+        WHERE a.uuid = '{safe}'
+        ORDER BY d.id DESC
         LIMIT {lim};
         """.strip()
 
@@ -586,16 +589,17 @@ class CoolifyDBManager:
         # the logs column survives intact (it can contain newlines).
         sql = f"""
         SELECT
-            deployment_uuid,
-            status,
-            COALESCE(commit, ''),
-            COALESCE(REPLACE(commit_message, '|', ' '), ''),
-            EXTRACT(EPOCH FROM created_at)::bigint,
-            EXTRACT(EPOCH FROM COALESCE(finished_at, updated_at))::bigint,
-            COALESCE(logs, '')
-        FROM application_deployment_queues
-        WHERE application_id = '{safe}'
-        ORDER BY id DESC
+            d.deployment_uuid,
+            d.status,
+            COALESCE(d.commit, ''),
+            COALESCE(REPLACE(d.commit_message, '|', ' '), ''),
+            EXTRACT(EPOCH FROM d.created_at)::bigint,
+            EXTRACT(EPOCH FROM COALESCE(d.finished_at, d.updated_at))::bigint,
+            COALESCE(d.logs, '')
+        FROM application_deployment_queues d
+        JOIN applications a ON a.id::text = d.application_id
+        WHERE a.uuid = '{safe}'
+        ORDER BY d.id DESC
         LIMIT 1;
         """.strip()
 
@@ -770,8 +774,10 @@ class CoolifyDBManager:
         SELECT
             ev.key,
             COALESCE(ev.is_preview::text, 'f'),
-            COALESCE(ev.is_build_time::text, 'f'),
+            COALESCE(ev.is_buildtime::text, 'f'),
+            COALESCE(ev.is_runtime::text, 't'),
             COALESCE(ev.is_literal::text, 'f'),
+            COALESCE(ev.is_shared::text, 'f'),
             COALESCE(LENGTH(ev.value), 0)
         FROM environment_variables ev
         JOIN {join_table} r ON r.id = ev.resourceable_id
@@ -782,9 +788,9 @@ class CoolifyDBManager:
         out: List[Dict] = []
         for row in self._psql_rows(sql):
             parts = row.split("|")
-            if len(parts) != 5:
+            if len(parts) != 7:
                 continue
-            key, is_preview, is_build, is_literal, value_len = parts
+            key, is_preview, is_build, is_runtime, is_literal, is_shared, value_len = parts
             try:
                 vlen = int(value_len) if value_len else 0
             except ValueError:
@@ -793,7 +799,9 @@ class CoolifyDBManager:
                 "key": key,
                 "is_preview": is_preview == "t",
                 "is_build_time": is_build == "t",
+                "is_runtime": is_runtime == "t",
                 "is_literal": is_literal == "t",
+                "is_shared": is_shared == "t",
                 "value_length": vlen,
             })
         return out
