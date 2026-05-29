@@ -176,6 +176,7 @@ def keys_create(
     request: Request,
     name: str = Form(""),
     allowed_projects: List[str] = Form(default=[]),
+    is_admin: bool = Form(False),
     admin_user: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -183,10 +184,13 @@ def keys_create(
     name = (name or "").strip() or "Unnamed"
     clean, err = _validate_project_ids(allowed_projects)
     if err:
-        # 422 + same partial — htmx won't swap on non-2xx by default, the JS
-        # form-side validator usually catches this first.
         raise HTTPException(status_code=422, detail=err)
-    row = ApiKey(key=generate_api_key(), name=name, allowed_projects=json.dumps(clean))
+    row = ApiKey(
+        key=generate_api_key(),
+        name=name,
+        allowed_projects=json.dumps(clean),
+        is_admin=bool(is_admin),
+    )
     db.add(row)
     db.commit()
     return _render_keys_partial(request, db)
@@ -212,6 +216,7 @@ def keys_update(
     request: Request,
     key: str,
     allowed_projects: List[str] = Form(default=[]),
+    is_admin: bool = Form(False),
     admin_user: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -223,5 +228,6 @@ def keys_update(
     if err:
         raise HTTPException(status_code=422, detail=err)
     row.set_allowed_projects(clean)
+    row.is_admin = bool(is_admin)
     db.commit()
     return _render_keys_partial(request, db)

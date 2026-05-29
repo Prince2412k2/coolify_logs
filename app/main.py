@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .database import create_engine_and_sessionmaker, get_db_path, get_db_url
 from .models import Base
 from .routers import admin as admin_router
+from .routers import admin_api as admin_api_router
 from .routers import api as api_router
 from . import rate_limit
 
@@ -169,6 +170,7 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(api_router.router)
+    app.include_router(admin_api_router.router)
     app.include_router(admin_router.router)
 
     return app

@@ -128,7 +128,7 @@ def get_api_key(
 
 
 def check_project_permission(api_key: ApiKey, project_id: Optional[str]) -> None:
-    """Raise 403 if the key isn't allowed to read this project.
+    """Raise 404 if the key isn't allowed to read this project.
 
     Pass project_id as `None` for resources whose project couldn't be resolved —
     those are always denied (no leakage of unknown resources).
@@ -141,6 +141,28 @@ def check_project_permission(api_key: ApiKey, project_id: Optional[str]) -> None
     if str(project_id) not in allowed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+        )
+
+
+def check_admin_permission(api_key: ApiKey, project_id: Optional[str]) -> None:
+    """Raise 403 if the key isn't admin OR isn't scoped to this project.
+
+    Project scoping still applies — admin scope is project-scoped by design.
+    """
+    if not api_key.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin write access required",
+        )
+    if project_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+        )
+    allowed = set(api_key.allowed_project_list())
+    if str(project_id) not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Key is admin but not scoped to this project",
         )
 
 

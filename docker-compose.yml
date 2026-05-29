@@ -36,7 +36,19 @@ services:
         condition: service_healthy
     privileged: true
     restart: unless-stopped
+    networks:
+      - default
+      # Join Coolify's network so we can hit its API at http://coolify:8000
+      # without going through the reverse proxy. The network is created by
+      # Coolify itself; we attach to it as `external: true` below.
+      - coolify
 
 volumes:
   log_gateway_data:
   postgres_data:
+
+networks:
+  coolify:
+    external: true
+    # If your Coolify install uses a different network name, override here:
+    # name: coolify_default

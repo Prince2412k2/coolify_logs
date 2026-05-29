@@ -188,6 +188,16 @@
           <div class="form-error" id="createErr" style="display:none">Select at least one project</div>
         </div>
 
+        <div style="margin-top:4px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(255,255,255,0.02)">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" name="is_admin" value="true" />
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600;color:var(--text)">Admin write access</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Allow restart / redeploy / audit on the projects above. Still scoped — never global.</div>
+            </div>
+          </label>
+        </div>
+
         <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center"
                 onclick="return validateCreate(event)">
           Generate key

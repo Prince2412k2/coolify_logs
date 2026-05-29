@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, List
+from typing import Any, List, Optional
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -18,9 +18,12 @@ class ApiKey(Base):
     key: Mapped[str] = mapped_column(String(255), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # JSON-encoded list of Coolify project IDs (strings) this key may read.
-    # An empty list means the key is effectively disabled (rejected by validation
-    # at create/update time, but legacy/manually-edited rows still behave safely).
+    # An empty list means the key is effectively disabled.
     allowed_projects: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # When true, this key can additionally call /api/admin/* routes — but only
+    # against projects in allowed_projects. There is no "global super-admin"
+    # scope by design; grant projects explicitly.
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -36,3 +39,18 @@ class ApiKey(Base):
 
     def set_allowed_projects(self, items: List[str]) -> None:
         self.allowed_projects = json.dumps(sorted({str(x) for x in items}))
+
+
+class AdminAudit(Base):
+    """One row per admin write operation. Append-only; FIFO-trimmed at 5000."""
+
+    __tablename__ = "admin_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    key_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target: Mapped[str] = mapped_column(String(255), nullable=False)
+    result: Mapped[str] = mapped_column(String(32), nullable=False)  # "ok" / "error"
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
